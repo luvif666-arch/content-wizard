@@ -1,0 +1,182 @@
+{
+  "$comment": "内容创作向导：把文章《如果你做不好内容，大概率也聊不好天》的思维过程固化为可执行状态机。字段说明见 README-需求与背景.md。",
+  "version": "1.0.0",
+  "source": {
+    "title": "如果你做不好内容，大概率也聊不好天",
+    "author": "小晚不在 (@bbkirstry)",
+    "url": "https://x.com/bbkirstry/status/2097326597846290487",
+    "coreMetaphor": "一次聊天"
+  },
+  "principles": [
+    "每一步只问一个问题，绝不同屏暴露后续步骤，避免用户提前焦虑。",
+    "每个选项必须携带“它负责什么结果”，而不是它长什么样。",
+    "上游改动必须让下游所有答案标记为 stale，需用户重新确认。",
+    "预设库优先，命中不到才调用模型生成，保证离线可用与低延迟。",
+    "输出物是一份可直接交给 Agent 的创作简报，不是成稿。"
+  ],
+  "steps": [
+    {
+      "id": "relationship",
+      "index": 0,
+      "layer": "关系",
+      "question": "这条内容是给谁看的？",
+      "questionTemplate": "我想跟 ______，聊聊 ______。",
+      "articleMapping": "你跟一个刚认识的人吃饭，会先抿一下你们大概能打成什么关系。",
+      "inputMode": "single-select + custom",
+      "options": [
+        { "id": "stranger", "label": "完全陌生的人", "hint": "对我和我的领域一无所知", "implies": "需要从头建立语境，不能跳步" },
+        { "id": "follower", "label": "已关注我的人", "hint": "知道我是谁，愿意听我说", "implies": "可以直接进入观点，不必铺垫身份" },
+        { "id": "peers", "label": "同行的从业者", "hint": "有共同背景和经验", "implies": "可以省略基础概念，直接讨论分歧点" },
+        { "id": "customers", "label": "潜在客户 / 有具体需求的人", "hint": "带着问题来找答案", "implies": "以解决问题为优先，少讲情怀" },
+        { "id": "friends", "label": "熟人 / 朋友", "hint": "关系亲近，接受口语化表达", "implies": "可以用内部梗和更松弛的语气" }
+      ],
+      "validation": { "required": true, "minSelections": 1 },
+      "fallback": "允许自由输入任意受众描述"
+    },
+    {
+      "id": "topic",
+      "index": 1,
+      "layer": "话题",
+      "question": "你想聊哪个大方向？",
+      "articleMapping": "话题给了我们一个讨论的方向……但如果你说“我今天想做一条情感内容”，我还是不知道你准备讲什么。",
+      "inputMode": "free-text-then-suggest",
+      "suggestionStrategy": {
+        "order": ["preset-map", "embedding-match", "llm-expand"],
+        "count": { "generate": 6, "dedupe": true, "display": 4, "minFallback": 3 },
+        "allowCustom": true
+      },
+      "presetExamples": {
+        "情感": ["约会", "暧昧期", "长期关系", "分手与复合", "婚姻磨合", "如何认识一个人"],
+        "职涯": ["求职", "转行", "晋升", "汇报与沟通", "副业", "和老板相处"],
+        "AI": ["工具选型", "提示词", "工作流自动化", "AI 对岗位的影响", "学习路径", "避坑"],
+        "健康": ["睡眠", "饮食", "运动习惯", "情绪管理", "体检解读", "久坐"],
+        "消费": ["品牌选择", "性价比", "踩坑复盘", "情绪消费", "收纳", "礼物"]
+      },
+      "validation": { "required": true, "minSelections": 1, "maxSelections": 2 },
+      "guardrail": "若用户只给了一个宽泛话题就点继续，提示：“这个话题还圈得太大了，选一个更小的分支，或者告诉我你这次想聊哪一部分？”"
+    },
+    {
+      "id": "subject",
+      "index": 2,
+      "layer": "选题",
+      "question": "这次你要对谁说什么？",
+      "articleMapping": "这里面得有一个具体的人，也有一件具体的事。",
+      "inputMode": "two-part-form + generated-examples",
+      "fields": [
+        {
+          "id": "who",
+          "label": "具体的人",
+          "question": "这个人的处境是什么？",
+          "options": [
+            { "id": "first-timer", "label": "第一次做这件事的人", "hint": "担心冷场、不知道准备什么" },
+            { "id": "stuck", "label": "做过很多次却一直卡住的人", "hint": "想搞清楚为什么总停在同一阶段" },
+            { "id": "deciding", "label": "正在做选择、拿不定主意的人", "hint": "需要判断依据而不是更多信息" },
+            { "id": "doubting", "label": "已经做了但结果不好、在怀疑自己的人", "hint": "需要解释原因和修正方向" },
+            { "id": "custom", "label": "其他（我自己描述）", "hint": "" }
+          ]
+        },
+        {
+          "id": "what",
+          "label": "具体的事",
+          "question": "你要帮他解决 / 看懂哪件事？",
+          "inputMode": "free-text",
+          "placeholder": "例：怎么让这次约会聊得舒服，让对方愿意继续了解你",
+          "helper": "写成一句“给【谁】，讲【怎么/为什么】”的话。"
+        }
+      ],
+      "autoFilter": {
+        "description": "选题一旦具体，自动生成“这次不讲什么”清单，帮助用户做取舍。",
+        "derivedFrom": "subject",
+        "output": ["不必讲的内容", "必须讲的内容", "要解释到什么程度", "希望读者看完明白什么"]
+      },
+      "validation": { "required": true, "requireBothFields": true },
+      "guardrail": "若用户选择“正在做选择但拿不定主意”却写成一句话口号，提示补上“他面对的几个选项是什么”。"
+    },
+    {
+      "id": "angle",
+      "index": 3,
+      "layer": "切入点",
+      "question": "这次从哪里开始聊？",
+      "articleMapping": "同一个选题，换一个切入点，需要准备的例子、信息和表达顺序都会跟着变。",
+      "inputMode": "multi-select (1-3) + rank",
+      "angleTypes": [
+        { "id": "scene", "label": "一个具体场景", "example": "第一次约会，从选哪家餐厅开始" },
+        { "id": "misconception", "label": "一个普遍误区", "example": "越努力介绍自己，对方越没兴趣" },
+        { "id": "cost", "label": "一次踩坑 / 代价", "example": "选了个很出片的餐厅，结果全程没聊上" },
+        { "id": "comparison", "label": "两类人的对比", "example": "第一次见网友 vs 约过很多次却进不了关系" },
+        { "id": "tiny-detail", "label": "一个极小但决定成败的细节", "example": "座位是面对面还是并排坐" },
+        { "id": "timepoint", "label": "一个时间点或收尾动作", "example": "约会结束后那条消息怎么发" }
+      ],
+      "selectionResult": "用户选定的是“入口”，不是“全文范围”",
+      "criticalRule": "切入点只负责把人带进来，后面的内容必须继续完成第 2 步选定的目标；当选中的切入点无法通向该目标时，向导必须给出警告并让用户确认。",
+      "validation": { "required": true, "minSelections": 1, "maxSelections": 3 }
+    },
+    {
+      "id": "title",
+      "index": 4,
+      "layer": "标题",
+      "question": "用哪句话开启这段对话？",
+      "articleMapping": "标题最重要的地方，是让对的人愿意进入这段对话。",
+      "inputMode": "generated-options + custom",
+      "formulas": [
+        { "id": "question", "label": "问题式", "pattern": "把读者正在做的那次选择直接摆出来", "example": "第一次约会，到底应该去哪里吃饭？" },
+        { "id": "judgement", "label": "判断式", "pattern": "先给结论，正文负责解释为什么", "example": "第一次约会，找个能好好说话的地方。" },
+        { "id": "resonance", "label": "共鸣式", "pattern": "从一个容易代入的失败经历开始", "example": "餐厅选得很认真，第一次约会还是没聊起来。" }
+      ],
+      "generation": { "count": 3, "onePer": "formula", "reasoningRequired": true },
+      "reasoningPrompt": "每句标题必须附一行说明：这句话在邀请谁进来、以及为什么他会想点开。",
+      "validation": { "required": true, "minSelections": 1 },
+      "note": "标题与选题可以是同一句话，区别在于它在这次创作里承担什么结果。"
+    },
+    {
+      "id": "expression",
+      "index": 5,
+      "layer": "表达",
+      "question": "你准备用什么让对方理解你的判断？",
+      "articleMapping": "知道对方现在理解到哪里，然后把下一步接给他。",
+      "inputMode": "structure-toggle + format",
+      "defaultStructure": [
+        { "id": "scene", "label": "场景", "role": "让对方先认出现象" },
+        { "id": "explain", "label": "解释", "role": "回答为什么值得在意" },
+        { "id": "advice", "label": "具体建议", "role": "让对方下次做决定时用得上" }
+      ],
+      "formats": [
+        { "id": "text", "label": "图文" },
+        { "id": "video", "label": "口播视频" },
+        { "id": "carousel", "label": "多图轮播" }
+      ],
+      "formatFollowUps": {
+        "video": ["哪些地方需要画面演示", "哪些段落可以剪短"],
+        "carousel": ["哪几页各承担一个信息点", "哪一页需要放在第一张"]
+      },
+      "validation": { "required": false, "defaultEnabled": true }
+    }
+  ],
+  "output": {
+    "artifactId": "content-brief",
+    "title": "一份可以直接交给 Agent 的创作简报",
+    "sections": [
+      "关系：这条内容给谁看",
+      "话题：讨论范围",
+      "选题：对谁说什么（含这次不讲什么）",
+      "切入点：从哪里开始",
+      "标题：候选句 + 各自的邀请对象",
+      "表达：结构顺序与体裁要求"
+    ],
+    "actions": ["复制全文", "复制为 Agent 提示词", "导出 Markdown", "导出 JSON", "分享链接"]
+  },
+  "stateRules": {
+    "persistence": "localStorage 自动保存草稿，刷新不丢失",
+    "stalePropagation": "任何上游步骤被修改，其下游全部答案标记 stale=true 并要求重新确认",
+    "backNavigation": "任意步骤可回退修改，已确认的下游保留内容但显示待确认标记",
+    "noSkip": "步骤不可跳过；但表达层允许使用默认结构一键完成"
+  },
+  "modelContract": {
+    "usage": "仅用于生成候选（子话题、切入点、标题、过滤清单）与最终大纲润色",
+    "interface": "单个函数 generate(stepId, context) -> 结构化 JSON，前端按 stepId 渲染，不新增步骤",
+    "onFailure": "模型不可用时回退到预设库与规则模板，向导必须仍能走完",
+    "temperature": 0.8,
+    "outputFormat": "json",
+    "schemaEnforcement": "服务端校验返回结构，字段缺失则重试一次，再失败则回退"
+  }
+}
