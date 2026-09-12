@@ -6,7 +6,8 @@ import type { WizardState } from '../types';
 
 interface Props {
   state: WizardState;
-  onRestart: () => void;
+  /** 新建一份草稿：当前这份不会被清掉，会留在草稿箱里 */
+  onNewDraft: () => void;
   onBack: () => void;
   onToast: (msg: string) => void;
   onImport: (state: WizardState) => void;
@@ -21,7 +22,7 @@ const TAB_META: Record<Tab, { label: string; file: string; mime: string; copied:
 };
 
 /** 最终输出：一屏创作简报 + 随当前格式切换的导出动作 */
-export default function BriefView({ state, onRestart, onBack, onToast, onImport }: Props) {
+export default function BriefView({ state, onNewDraft, onBack, onToast, onImport }: Props) {
   const [tab, setTab] = useState<Tab>('brief');
   const [importOpen, setImportOpen] = useState(false);
   const brief = useMemo(() => buildBrief(state), [state]);
@@ -136,8 +137,8 @@ export default function BriefView({ state, onRestart, onBack, onToast, onImport 
         <button type="button" className="btn" onClick={onBack}>
           回去改上一步
         </button>
-        <button type="button" className="btn ghost" onClick={onRestart}>
-          从头开始一份新的
+        <button type="button" className="btn ghost" onClick={onNewDraft}>
+          新建一份草稿（这份留在草稿箱）
         </button>
       </div>
 
@@ -179,7 +180,8 @@ function ImportModal({
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h2>从 JSON 恢复</h2>
         <p className="lede">
-          把之前用「下载为文件」或「复制这份结构化 JSON」得到的 JSON 粘进来，就能接着改。已有的草稿会被覆盖。
+          把之前用「下载为文件」或「复制这份结构化 JSON」得到的 JSON 粘进来，就能接着改。
+          恢复的内容会覆盖<strong>当前打开的这份草稿</strong>，草稿箱里的其它草稿不受影响。
         </p>
         <div className="field" style={{ marginTop: 14 }}>
           <label htmlFor="import-json">粘贴 JSON</label>

@@ -1,6 +1,8 @@
 // 内置预设库与规则模板。
 // 设计要求：没有 API Key、甚至完全断网时，全部候选都由这里生成，向导必须能走完。
 
+import type { CandidateSource } from './types';
+
 export interface PresetOption {
   id: string;
   label: string;
@@ -202,9 +204,9 @@ export interface Inspiration {
   /**
    * 这一条的来源。区分「内置库」和「模板推导」很重要：
    * 前者是预先写好的成稿文案，后者是用话题 + 通用句式现拼的。
-   * 把拼出来的说成内置的，就是在夸大准确度。
+   * 把拼出来的说成内置的，就是在夸大准确度。模型生成/联网检索同理，必须如实标。
    */
-  source: 'preset' | 'template' | 'model' | 'search';
+  source: CandidateSource;
 }
 
 /** 内置库：成稿文案，只针对这些话题，不做模板替换 */
@@ -329,5 +331,258 @@ export function pickDomainNoun(topic: TopicAnswerLike | null): string {
   const sub = topic.subs[topic.subs.length - 1]?.trim();
   if (sub) return sub;
   return topic.big.trim() || '这件事';
+}
+
+/* ------------------------------------------------------------------ *
+ * 第 6 步的「参考写法」
+ * 目的：结构选完了，用户仍常常不知道每一段具体写什么。
+ * 这里按当前结构给每一段 3–4 条候选，每条都带上第 3 步的「对谁说什么」、
+ * 第 4 步的切入点、第 5 步的标题——让它像「这条内容的这一段的写法」，而不是通用模板。
+ * 来源分两档，界面上如实区分：
+ *   preset   内置库：预先写好的整段写法，不做词语替换；
+ *   template 模板推导：用当前上下文现拼的句子。
+ * 模型可用时由调用方替换成模型生成，并标成「模型生成」。
+ * ------------------------------------------------------------------ */
+
+/** 段落类型：认得出的用专门模板，认不出的按用户自己的 role 推导 */
+export type SectionKind = 'scene' | 'explain' | 'advice' | 'generic';
+
+export interface SectionIdeaContext {
+  /** 具体的人（第 3 步） */
+  who: string;
+  /** 具体的事（第 3 步） */
+  what: string;
+  /** 选定的标题（第 5 步） */
+  title: string;
+  /** 第一个切入点（第 4 步） */
+  angle: string;
+  /** 领域名词 */
+  noun: string;
+  /** 已选子话题 */
+  sub: string;
+  big: string;
+  /** 这一段在结构里负责什么 */
+  role: string;
+}
+
+export interface SectionIdea {
+  id: string;
+  /** 入手角度，如「从读者的处境开始」 */
+  approach: string;
+  text: string;
+  source: CandidateSource;
+}
+
+/** 用当前上下文把占位符填成具体的写法 */
+export function fillSlots(template: string, ctx: SectionIdeaContext): string {
+  return template
+    .replace(/\{who\}/g, ctx.who)
+    .replace(/\{what\}/g, ctx.what)
+    .replace(/\{title\}/g, ctx.title)
+    .replace(/\{angle\}/g, ctx.angle)
+    .replace(/\{noun\}/g, ctx.noun)
+    .replace(/\{sub\}/g, ctx.sub)
+    .replace(/\{big\}/g, ctx.big)
+    .replace(/\{role\}/g, ctx.role);
+}
+
+interface IdeaPattern {
+  id: string;
+  approach: string;
+  template: string;
+}
+
+/**
+ * 模板推导：四条不同角度的写法。
+ * 切入点文案本身带引号，所以外面用『』包，避免和它内部的「」打架。
+ */
+const SECTION_TEMPLATES: Record<SectionKind, IdeaPattern[]> = {
+  scene: [
+    {
+      id: 'scene-situation',
+      approach: '从读者的处境开始',
+      template:
+        '先写「{who}」此刻正在经历的那一幕：他面对「{what}」，手上正在做什么、卡在哪一步。先别给结论，让他先认出自己。',
+    },
+    {
+      id: 'scene-title',
+      approach: '用标题当第一句',
+      template:
+        '把选定的标题「{title}」当作第一句话直接说出来，下面紧跟一个具体场景去兑现它——标题承诺了什么，这一段就先摆出那个画面。',
+    },
+    {
+      id: 'scene-angle',
+      approach: '从切入点落笔',
+      template:
+        '直接从第 4 步选定的切入点落笔：『{angle}』把它写成一次正在发生的现场，而不是背景介绍。',
+    },
+    {
+      id: 'scene-quote',
+      approach: '让他自己说一句',
+      template:
+        '开篇让「{who}」自己说一句话——他心里那句没说出口的抱怨或疑问——再说明他为什么会这么想。',
+    },
+  ],
+  explain: [
+    {
+      id: 'explain-unasked',
+      approach: '回答他没问出口的问题',
+      template:
+        '回答「{who}」心里那个没问出口的问题：他为什么按现在的方式对待「{what}」，一直这样做下去会付出什么代价。',
+    },
+    {
+      id: 'explain-title',
+      approach: '拆开标题里那句判断',
+      template:
+        '把标题「{title}」里那句判断拆开：先承认它听起来像什么，再说明它在「{sub}」这件事上为什么不成立。',
+    },
+    {
+      id: 'explain-compare',
+      approach: '两类人对比',
+      template:
+        '用一次对比讲清楚：同样面对「{what}」，一类人怎么想、另一类人怎么想，差别到底出在哪一步。',
+    },
+    {
+      id: 'explain-signal',
+      approach: '给判断依据而不是信息',
+      template:
+        '给出判断依据而不是更多信息：面对「{what}」，看哪一两个信号，就能分出该往哪边走。',
+    },
+  ],
+  advice: [
+    {
+      id: 'advice-action',
+      approach: '一个下次就能用的动作',
+      template:
+        '给「{who}」一个下次就能用的动作：什么时机做、具体做什么、怎么判断自己做对了。',
+    },
+    {
+      id: 'advice-steps',
+      approach: '拆成按顺序的两三步',
+      template:
+        '把「{what}」拆成两三个能立刻照做的动作，排好先后顺序，并点明哪一步最容易做错。',
+    },
+    {
+      id: 'advice-angle',
+      approach: '回到切入点收口',
+      template:
+        '回到你选定的切入点：『{angle}』读者正是从那里进来的，这一段要让他带走一句马上能用的话。',
+    },
+    {
+      id: 'advice-checklist',
+      approach: '给一个自查标准',
+      template:
+        '给一条他自己就能检查的标准：关于「{noun}」这件事做完之后，对照什么就知道自己有没有走偏。',
+    },
+  ],
+  generic: [
+    {
+      id: 'generic-role',
+      approach: '围绕这一段的职责写',
+      template:
+        '这一段在结构里负责「{role}」。围绕「{what}」，写清「{who}」到这里需要知道的下一件事。',
+    },
+    {
+      id: 'generic-title',
+      approach: '承接标题的承诺',
+      template:
+        '承接标题「{title}」给出的承诺，把「{role}」这件事讲到他愿意点头为止，不再往别处铺。',
+    },
+    {
+      id: 'generic-angle',
+      approach: '从切入点往后推一步',
+      template:
+        '从第 4 步的切入点往后推进一步：『{angle}』读者已经进来了，这一段负责把他带到「{what}」这个目标上。',
+    },
+    {
+      id: 'generic-split',
+      approach: '拆成能跟着走的两步',
+      template:
+        '围绕「{noun}」，把「{role}」拆成读者能跟着走的一两步，别停在结论上。',
+    },
+  ],
+};
+
+/** 内置库：预先写好的整段写法，不做词语替换，所以标成「内置库」而不是「模板推导」 */
+const SECTION_PRESETS: Record<SectionKind, { id: string; approach: string; body: string }> = {
+  scene: {
+    id: 'preset-scene',
+    approach: '不铺垫，直接落到现场',
+    body:
+      '开篇不解释、不铺垫，三句话之内落到一个具体的人正在做的一件具体的事：时间、地点、他手上的动作。让读者认出「这说的就是我」。',
+  },
+  explain: {
+    id: 'preset-explain',
+    approach: '先立靶子再拆',
+    body:
+      '先说清大多数人默认的那个解释，再指出它在什么条件下不成立，最后给出你看到的真实原因。这一段只负责回答「为什么值得在意」。',
+  },
+  advice: {
+    id: 'preset-advice',
+    approach: '给能用的东西，不给口号',
+    body:
+      '给出他下一次做决定时用得上的东西：一个判断依据、一个具体动作、一个能自己检查的标准。不要停在「要多沟通」这种正确但没用的话。',
+  },
+  generic: {
+    id: 'preset-generic',
+    approach: '只讲这一段该讲的',
+    body:
+      '先明确这一段在整篇里承担什么，只讲完成这个任务必须讲的内容，不顺手铺开别的分支。',
+  },
+};
+
+/** 认段落类型：先看 id，再看 role / label 里的关键词 */
+export function sectionKindOf(section: { id: string; label?: string; role?: string }): SectionKind {
+  const id = section.id.toLowerCase();
+  if (id.startsWith('scene') || id.includes('scene')) return 'scene';
+  if (id.startsWith('explain') || id.includes('explain')) return 'explain';
+  if (id.startsWith('advice') || id.includes('advice')) return 'advice';
+
+  const text = `${section.label ?? ''}${section.role ?? ''}`;
+  if (/场景|现象|开场|开头|切入/.test(text)) return 'scene';
+  if (/解释|为什么|原因|值得在意|道理/.test(text)) return 'explain';
+  if (/建议|动作|方法|怎么办|怎么做|收口|结论/.test(text)) return 'advice';
+  return 'generic';
+}
+
+/** 这一段的候选池：4 条模板推导 + 1 条内置库写法，调用方按批展示 3–4 条 */
+export function presetSectionIdeas(
+  section: { id: string; label?: string; role?: string },
+  ctx: SectionIdeaContext,
+): SectionIdea[] {
+  const kind = sectionKindOf(section);
+  const templates: SectionIdea[] = SECTION_TEMPLATES[kind].map((p) => ({
+    id: `${section.id}-${p.id}`,
+    approach: p.approach,
+    text: fillSlots(p.template, ctx),
+    source: 'template',
+  }));
+  const preset = SECTION_PRESETS[kind];
+  return [
+    ...templates,
+    { id: `${section.id}-${preset.id}`, approach: preset.approach, text: preset.body, source: 'preset' },
+  ];
+}
+
+/** 「根据已定内容扩写这段」的离线推导：讲什么 / 举什么例子 / 给什么建议 */
+export function presetExpansion(
+  section: { id: string; label?: string; role?: string },
+  ctx: SectionIdeaContext,
+): { plan: string; example: string; advice: string } {
+  const role = section.role?.trim() || section.label?.trim() || '这一段该完成的事';
+  return {
+    plan: fillSlots(
+      '这一段讲「{noun}」在「{who}」身上的具体表现，完成「{role}」这个任务；落点仍然是「{what}」，不要顺手铺开别的分支。',
+      { ...ctx, role },
+    ),
+    example: fillSlots(
+      '举一个具体例子：写「{who}」真实会遇到的一次情形——什么时间、他正在做什么动作、最后结果怎样。例子要你自己出（你的经历或你见过的），这里不替你编。',
+      { ...ctx, role },
+    ),
+    advice: fillSlots(
+      '给一句他马上能用的判断：面对「{what}」，下次先看什么、先做什么。写成他自己能照着做的动作，不要写成口号。',
+      { ...ctx, role },
+    ),
+  };
 }
 

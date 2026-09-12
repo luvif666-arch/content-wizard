@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { getSubtopics } from '../lib/model';
+import { SOURCE_LABEL, getSubtopics } from '../lib/model';
 import type { CandidateSource, ModelPrefs } from '../lib/model';
 import type { TopicAnswer } from '../types';
 
@@ -7,12 +7,15 @@ interface Props {
   value: TopicAnswer | null;
   prefs: ModelPrefs;
   onChange: (v: TopicAnswer) => void;
+  /** 候选重生成后清掉了已选范围时，把原因交给外层显示（清空由本步自己做，不整步重置） */
+  onNotice: (reason: string) => void;
 }
 
 const MAX_SUBS = 2;
+const LAYER = '子话题';
 
 /** 第 2 步：话题。自由输入大类，系统给候选子话题卡片，最多选 2 个，也允许自己写。 */
-export default function TopicStep({ value, prefs, onChange }: Props) {
+export default function TopicStep({ value, prefs, onChange, onNotice }: Props) {
   const [big, setBig] = useState(value?.big ?? '');
   const [candidates, setCandidates] = useState<string[]>([]);
   const [source, setSource] = useState<CandidateSource>('preset');
@@ -22,6 +25,7 @@ export default function TopicStep({ value, prefs, onChange }: Props) {
   const reqId = useRef(0);
 
   const subs = value?.subs ?? [];
+  const basisKey = big.trim();
 
   async function generate(raw: string, silent = false) {
     const key = raw.trim();
@@ -51,17 +55,39 @@ export default function TopicStep({ value, prefs, onChange }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [big, prefs.apiKey, prefs.baseUrl, prefs.model]);
 
+  /**
+   * 大方向一改，子话题候选就换了一批：原来选的子话题必须立即作废并说明原因。
+   * 与第 4/5/6 步同一把尺子——只是这里清的是本步自己的字段，
+   * 所以由本步清空、只把说明交给外层（整步重置会把用户刚敲的大方向一起弄丢）。
+   * 没有记过依据的（旧草稿 / 从 JSON 恢复 / 分享链接）补记依据即可，不动他已选的范围。
+   */
+  useEffect(() => {
+    const saved = value?.basisKey;
+    if (saved === undefined) {
+      if (subs.length) onChange({ big: basisKey, subs, basisKey });
+      return;
+    }
+    if (saved === basisKey) return;
+    if (!subs.length) {
+      onChange({ big: basisKey, subs, basisKey });
+      return;
+    }
+    onChange({ big: basisKey, subs: [], basisKey });
+    onNotice(`大方向改了，原来选的${LAYER}已经不适用，已清空，请重新选。`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [basisKey, value?.basisKey, subs.length]);
+
   function toggleSub(sub: string) {
     const has = subs.includes(sub);
     if (!has && subs.length >= MAX_SUBS) return;
     const next = has ? subs.filter((s) => s !== sub) : [...subs, sub];
-    onChange({ big: big.trim(), subs: next });
+    onChange({ big: big.trim(), subs: next, basisKey });
   }
 
   function addCustomSub() {
     const s = customSub.trim();
     if (!s || subs.includes(s) || subs.length >= MAX_SUBS) return;
-    onChange({ big: big.trim(), subs: [...subs, s] });
+    onChange({ big: big.trim(), subs: [...subs, s], basisKey });
     setCustomSub('');
   }
 
@@ -89,8 +115,9 @@ export default function TopicStep({ value, prefs, onChange }: Props) {
             onChange={(e) => {
               const nextBig = e.target.value;
               setBig(nextBig);
-              // 必须回写父状态：否则「是否填过大类话题」判断不到，下一步会被误判为未填写
-              onChange({ big: nextBig, subs: value?.subs ?? [] });
+              // 必须回写父状态：否则「是否填过大类话题」判断不到，下一步会被误判为未填写。
+              // basisKey 留旧值：真正的清空判定交给上面那个 effect，避免在这里漏掉说明。
+              onChange({ big: nextBig, subs: value?.subs ?? [], basisKey: value?.basisKey });
             }}
           />
           <button type="button" className="btn" onClick={() => void generate(big)} disabled={!big.trim() || loading}>
@@ -106,7 +133,7 @@ export default function TopicStep({ value, prefs, onChange }: Props) {
           <h2>
             收窄到哪一部分？
             <span className="tag" style={{ marginLeft: 8 }}>
-              {source === 'model' ? '模型生成' : '内置预设'}
+              {SOURCE_LABEL[source]}
             </span>
             <span className="tag" style={{ marginLeft: 6 }}>
               已选 {subs.length}/{MAX_SUBS}
@@ -183,7 +210,7 @@ export default function TopicStep({ value, prefs, onChange }: Props) {
             <span className="tag">
               {subs.length}/{MAX_SUBS}
             </span>
-            <button type="button" className="linkbtn chosen-clear" onClick={() => onChange({ big: big.trim(), subs: [] })}>
+            <button type="button" className="linkbtn chosen-clear" onClick={() => onChange({ big: big.trim(), subs: [], basisKey })}>
               清空
             </button>
           </div>

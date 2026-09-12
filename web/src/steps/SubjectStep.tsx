@@ -24,6 +24,8 @@ export default function SubjectStep({ value, topic, prefs, onChange }: Props) {
   const [offset, setOffset] = useState(0);
   /** 刚被点选填入的示例 id。用于提示用户「这是示例，可以改」，用户一动手就清掉。 */
   const [filledId, setFilledId] = useState<string | null>(null);
+  /** 刚换过一批示例：要明说用户已经填进去的内容不会被动 */
+  const [rotated, setRotated] = useState(false);
 
   const what = value?.what ?? '';
   const who = value?.who ?? null;
@@ -52,6 +54,7 @@ export default function SubjectStep({ value, topic, prefs, onChange }: Props) {
       setNote(res.note);
       setOffset(0);
       setFilledId(null);
+      setRotated(false);
       setLoading(false);
     });
     return () => {
@@ -70,6 +73,11 @@ export default function SubjectStep({ value, topic, prefs, onChange }: Props) {
   }, [inspirations, source, offset]);
 
   function rotate() {
+    // 换一批 = 这一批示例作废。但这步的选择不是「候选对象」本身：点选示例的瞬间，
+    // 它的内容已经被抄进用户自己的两个输入框，之后归用户所有（他可以随便改）。
+    // 所以这里只撤掉「刚才是从哪条示例填进来的」这个标记，绝不回头去改他填好的内容。
+    setFilledId(null);
+    setRotated(true);
     if (source === 'model' || source === 'search') {
       // 模型来源无法本地轮换，重新请求一次
       setLoading(true);
@@ -86,6 +94,7 @@ export default function SubjectStep({ value, topic, prefs, onChange }: Props) {
 
   function applyInspiration(item: Inspiration) {
     setFilledId(item.id);
+    setRotated(false);
     onChange({
       who: { id: 'from-inspiration', label: item.whoLabel, hint: '来自灵感示例' },
       what: item.what,
@@ -123,6 +132,7 @@ export default function SubjectStep({ value, topic, prefs, onChange }: Props) {
                 aria-pressed={selected}
                 onClick={() => {
                   setFilledId(null);
+                  setRotated(false);
                   patch({
                     who: {
                       id: p.id,
@@ -154,6 +164,7 @@ export default function SubjectStep({ value, topic, prefs, onChange }: Props) {
               placeholder="例：约过很多次，却始终进不了关系的人"
               onChange={(e) => {
                 setCustomWho(e.target.value);
+                setRotated(false);
                 patch({
                   who: { id: 'custom', label: e.target.value.trim() || '（待填写）', hint: '自己描述' },
                 });
@@ -210,6 +221,12 @@ export default function SubjectStep({ value, topic, prefs, onChange }: Props) {
               示例已填入下面两个框。你想怎么改都行——示例只是给你一个能往下想的起点。
             </div>
           )}
+
+          {rotated && !filledId && (
+            <div className="notice info">
+              已换一批。你之前填进「他是谁 / 你要讲什么」的内容不会被动——那已经是你自己的答案了。
+            </div>
+          )}
         </div>
       )}
 
@@ -222,6 +239,7 @@ export default function SubjectStep({ value, topic, prefs, onChange }: Props) {
           placeholder="例：怎么让这次约会聊得舒服，让对方愿意继续了解你"
           onChange={(e) => {
             setFilledId(null);
+            setRotated(false);
             patch({ what: e.target.value });
           }}
         />

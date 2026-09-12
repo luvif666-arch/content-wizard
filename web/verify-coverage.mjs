@@ -87,7 +87,7 @@ try {
   );
   check(
     '来源如实标注（模板拼出来的不冒充内置文案）',
-    info.source === '内置预设' || info.source === '模板推导',
+    info.source === '内置库' || info.source === '模板推导',
     `「${info.source}」`,
   );
 

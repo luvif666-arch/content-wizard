@@ -2,6 +2,7 @@
 // 一致性要求：Markdown / Prompt / JSON 三种产物必须来自同一份 buildBrief()，字段不得各写一套。
 
 import { buildFilterList } from '../presets';
+import { SOURCE_LABEL } from './model';
 import { OUTPUT_FORMAT_LABEL, STEP_META } from '../types';
 import type { AngleOption, TitleOption, WizardState } from '../types';
 
@@ -78,24 +79,50 @@ export function buildBrief(state: WizardState): Brief {
     lines: title ? [`标题：${title.text}`, `句式：${title.kind}`, `为什么是它：${title.reason}`] : ['（未填写）'],
   });
 
+  const expression = state.expression;
+  const referenceGroups: BriefGroup[] = [];
+  if (expression) {
+    const refs = expression.sections.filter((s) => s.reference);
+    if (refs.length) {
+      referenceGroups.push({
+        title: '已采纳的参考写法（参考，不是成稿）',
+        items: refs.map(
+          (s) => `${s.label}｜${s.reference!.approach}（来源：${SOURCE_LABEL[s.reference!.source]}）：${s.reference!.text}`,
+        ),
+      });
+    }
+    const expansions = expression.sections.filter((s) => s.expansion);
+    if (expansions.length) {
+      referenceGroups.push({
+        title: '扩写：每段讲什么／举什么例子／给什么建议',
+        items: expansions.flatMap((s) => [
+          `${s.label}——讲什么：${s.expansion!.plan}`,
+          `${s.label}——举什么例子：${s.expansion!.example}`,
+          `${s.label}——给什么建议：${s.expansion!.advice}`,
+        ]),
+      });
+    }
+  }
+
   sections.push({
     layer: STEP_META.expression.layer,
     question: STEP_META.expression.question,
-    lines: state.expression
-      ? [`体裁：${OUTPUT_FORMAT_LABEL[state.expression.format]}`, '结构顺序：']
+    lines: expression
+      ? [`体裁：${OUTPUT_FORMAT_LABEL[expression.format]}`, '结构顺序：']
       : ['（未填写）'],
-    groups: state.expression
+    groups: expression
       ? [
           {
-            items: state.expression.sections.map(
+            items: expression.sections.map(
               (s, i) => `${i + 1}. ${s.label}——${s.role}${s.detail ? `；本篇要讲：${s.detail}` : ''}`,
             ),
           },
-          ...(Object.keys(state.expression.followUps).length
+          ...referenceGroups,
+          ...(Object.keys(expression.followUps).length
             ? [
                 {
                   title: '体裁追问',
-                  items: Object.entries(state.expression.followUps).map(([q, a]) => `${q} ${a || '（未填）'}`),
+                  items: Object.entries(expression.followUps).map(([q, a]) => `${q} ${a || '（未填）'}`),
                 },
               ]
             : []),

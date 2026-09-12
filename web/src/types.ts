@@ -1,5 +1,12 @@
 // 向导的领域模型。字段设计对应文章里的六层：关系 / 话题 / 选题 / 切入点 / 标题 / 表达。
 
+/**
+ * 候选内容的来源。放在领域模型里而不是适配层里：
+ * 第 4 / 5 / 6 步的答案需要记住「这条选择是基于哪一批候选做的」，来源标签也要跟着走。
+ * 界面必须如实区分，没有联网检索能力就不许标成联网。
+ */
+export type CandidateSource = 'preset' | 'template' | 'model' | 'search';
+
 /** 第 1 步：这条内容给谁看 */
 export interface AudienceAnswer {
   /** 预设选项 id；自定义时为 'custom' */
@@ -16,6 +23,11 @@ export interface TopicAnswer {
   big: string;
   /** 选中的子话题，最多 2 个 */
   subs: string[];
+  /**
+   * 这批子话题候选是按哪个大方向生成的。
+   * 大方向一改，候选就换了一批，原来选的子话题必须作废——否则会出现「新方向配着旧分支」。
+   */
+  basisKey?: string;
 }
 
 /** 第 3 步：选题——对谁说什么 */
@@ -39,6 +51,12 @@ export interface AngleAnswer {
   selected: AngleOption[];
   /** 用户已确认「切入点确实通向选题目标」 */
   consistencyAcknowledged: boolean;
+  /**
+   * 这批候选是按什么上下文生成的。
+   * 上游改了、或用户点了「换一批」，它就和当前上下文对不上——据此判定旧选择作废。
+   * 老草稿没有这个字段，此时退化为「文案是否还在候选里」的比对。
+   */
+  basisKey?: string;
 }
 
 /** 第 5 步：标题 */
@@ -53,6 +71,8 @@ export interface TitleOption {
 
 export interface TitleAnswer {
   selected: TitleOption | null;
+  /** 同 AngleAnswer.basisKey：候选换了，基于旧候选选的标题就不能留 */
+  basisKey?: string;
 }
 
 /** 第 6 步：表达 */
@@ -63,6 +83,36 @@ export interface ExpressionSection {
   role: string;
   /** 用户可补充这段要讲什么 */
   detail: string;
+  /**
+   * 用户采纳的「参考写法」。它不是成稿，只是这一段可以怎么写的参照。
+   * 带 basisKey：候选一重生成，这条采纳就必须作废，否则会出现「新选题配旧写法」。
+   */
+  reference?: SectionReference | null;
+  /** 「根据已定内容扩写这段」的结果，同样随候选作废 */
+  expansion?: SectionExpansion | null;
+}
+
+/** 一条参考写法：结合第 3 步选题 / 第 4 步切入点 / 第 5 步标题推导出来的「这一段怎么写」 */
+export interface SectionReference {
+  id: string;
+  /** 入手角度，如「从读者的处境开始」 */
+  approach: string;
+  text: string;
+  source: CandidateSource;
+  /** 生成依据；与当前依据不一致即作废 */
+  basisKey: string;
+}
+
+/** 参考写法的展开：这一段打算讲什么 / 举什么例子 / 给什么建议 */
+export interface SectionExpansion {
+  /** 这一段打算讲什么 */
+  plan: string;
+  /** 举什么例子（例子要用户自己填，不给编） */
+  example: string;
+  /** 给什么建议 */
+  advice: string;
+  source: CandidateSource;
+  basisKey: string;
 }
 
 export type OutputFormat = 'text' | 'video' | 'carousel';
@@ -112,4 +162,27 @@ export function emptyState(): WizardState {
     title: null,
     expression: null,
   };
+}
+
+/** 这一步是否已经填完（用于「已完成几步」与「能否进入下一步」） */
+export function isStepDone(step: StepId, s: WizardState): boolean {
+  switch (step) {
+    case 'audience':
+      return !!s.audience && s.audience.label !== '（待填写）';
+    case 'topic':
+      return !!s.topic && s.topic.big.trim().length > 0 && s.topic.subs.length > 0;
+    case 'subject':
+      return !!s.subject && !!s.subject.who.label && s.subject.who.label !== '（待填写）' && s.subject.what.trim().length > 0;
+    case 'angle':
+      return !!s.angle && s.angle.selected.length > 0;
+    case 'title':
+      return !!s.title?.selected;
+    case 'expression':
+      return !!s.expression && s.expression.sections.length > 0;
+  }
+}
+
+/** 走完了几步（0–6） */
+export function doneCount(s: WizardState): number {
+  return STEP_ORDER.filter((step) => isStepDone(step, s)).length;
 }

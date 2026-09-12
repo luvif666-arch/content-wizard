@@ -10,7 +10,8 @@
     "preview": "vite preview --port 5234 --strictPort",
     "typecheck": "tsc --noEmit",
     "serve": "node serve-dist.mjs 5240",
-    "verify": "node verify.mjs http://127.0.0.1:5240/"
+    "verify": "node verify.mjs http://127.0.0.1:5240/",
+    "verify:drafts": "node verify-drafts.mjs http://127.0.0.1:5240/"
   },
   "dependencies": {
     "react": "^18.3.1",

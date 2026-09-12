@@ -2,12 +2,17 @@
 // 与 toJson() 对称——导出是单向快照，这里补上回灌，让它变成可归档、可续编的存档。
 
 import { emptyState } from '../types';
-import type { AngleAnswer, ExpressionAnswer, TitleAnswer, WizardState } from '../types';
+import type { AngleAnswer, CandidateSource, ExpressionAnswer, TitleAnswer, WizardState } from '../types';
 
 export type ParseResult = { ok: true; state: WizardState } | { ok: false; error: string };
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+/** 来源标签必须如实还原：认不出来的一律当「内置库」，绝不冒认成模型生成或联网检索 */
+function sourceOf(v: unknown): CandidateSource {
+  return v === 'template' || v === 'model' || v === 'search' ? v : 'preset';
 }
 
 /**
@@ -101,12 +106,36 @@ export function parseImportedState(text: string): ParseResult {
     const sections = source.expression.sections
       .filter(isRecord)
       .filter((s) => typeof s.label === 'string')
-      .map((s, i) => ({
-        id: typeof s.id === 'string' ? s.id : `imported-${i}`,
-        label: s.label as string,
-        role: typeof s.role === 'string' ? s.role : '',
-        detail: typeof s.detail === 'string' ? s.detail : '',
-      }));
+      .map((s, i) => {
+        const id = typeof s.id === 'string' ? s.id : `imported-${i}`;
+        // 参考写法与扩写也一起恢复，否则往返一次就白写了
+        const ref = isRecord(s.reference) && typeof s.reference.text === 'string' ? s.reference : null;
+        const exp = isRecord(s.expansion) && typeof s.expansion.plan === 'string' ? s.expansion : null;
+        return {
+          id,
+          label: s.label as string,
+          role: typeof s.role === 'string' ? s.role : '',
+          detail: typeof s.detail === 'string' ? s.detail : '',
+          reference: ref
+            ? {
+                id: typeof ref.id === 'string' ? ref.id : `imported-ref-${i}`,
+                approach: typeof ref.approach === 'string' ? ref.approach : '导入的参考写法',
+                text: ref.text as string,
+                source: sourceOf(ref.source),
+                basisKey: typeof ref.basisKey === 'string' ? ref.basisKey : '',
+              }
+            : null,
+          expansion: exp
+            ? {
+                plan: exp.plan as string,
+                example: typeof exp.example === 'string' ? exp.example : '',
+                advice: typeof exp.advice === 'string' ? exp.advice : '',
+                source: sourceOf(exp.source),
+                basisKey: typeof exp.basisKey === 'string' ? exp.basisKey : '',
+              }
+            : null,
+        };
+      });
     if (sections.length) {
       const format =
         source.expression.format === 'video' || source.expression.format === 'carousel'

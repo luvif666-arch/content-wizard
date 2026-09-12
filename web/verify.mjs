@@ -69,6 +69,31 @@ async function notices(page) {
 }
 
 /**
+ * 读取草稿箱里「当前打开的那一份」。
+ * 多草稿存储：content-wizard.drafts.v1 = { version, activeId, drafts: [...] }
+ */
+async function activeDraft(page) {
+  return page.evaluate(() => {
+    const store = JSON.parse(localStorage.getItem('content-wizard.drafts.v1') ?? '{}');
+    const drafts = store.drafts ?? [];
+    return drafts.find((d) => d.id === store.activeId) ?? drafts[0] ?? null;
+  });
+}
+
+/** 直接改写当前草稿的状态字段（用于制造缺字段的草稿） */
+async function patchActiveDraft(page, patch) {
+  await page.evaluate((p) => {
+    const key = 'content-wizard.drafts.v1';
+    const store = JSON.parse(localStorage.getItem(key) ?? '{}');
+    const draft = (store.drafts ?? []).find((d) => d.id === store.activeId) ?? (store.drafts ?? [])[0];
+    if (draft) {
+      draft.state = { ...draft.state, ...p };
+      localStorage.setItem(key, JSON.stringify(store));
+    }
+  }, patch);
+}
+
+/**
  * 直接给输入框赋值并派发 input 事件。
  * page.type() 是逐字符输入，几百字的 JSON 会因为太慢而超时截断，所以这里走原生 setter，
  * 让 React 的 onChange 正常收到变更。
@@ -183,7 +208,7 @@ try {
   text = await bodyText(page);
   const subCount = await page.$$eval('button.option', (n) => n.length);
   check('输入「情感」出现可选子话题', subCount >= 3 && text.includes('约会'), `候选数 ${subCount}，含「约会」`);
-  check('候选来源被如实标注', text.includes('内置预设'), '标注为内置预设而不是假装模型生成');
+  check('候选来源被如实标注', text.includes('内置库'), '标注为内置库而不是假装模型生成');
   await page.screenshot({ path: resolve(SHOTS, 'step2-topic.png') });
 
   // （不选子话题，下一步应保持禁用）
@@ -291,7 +316,7 @@ try {
   );
   check(
     '示例标注来源，且不谎称联网检索',
-    ['内置预设', '模板推导', '主题推导'].includes(inspireInfo.source),
+    ['内置库', '模板推导', '模型生成'].includes(inspireInfo.source),
     `来源标注为「${inspireInfo.source}」`,
   );
   check(
@@ -436,7 +461,108 @@ try {
   await sleep(200);
   text = await bodyText(page);
   check('选择视频体裁后追加追问', text.includes('哪些地方需要画面演示'), '体裁相关追问出现');
-  await page.screenshot({ path: resolve(SHOTS, 'step6-expression.png') });
+
+  // ---------- 8b. 第 6 步：每一段的参考写法 ----------
+  await page.waitForFunction(
+    () => document.querySelectorAll('.ideas .idea-card').length >= 9,
+    { timeout: 6000 },
+  );
+  const ideaInfo = await page.evaluate(() => {
+    const blocks = Array.from(document.querySelectorAll('.ideas'));
+    const step6 = JSON.parse(localStorage.getItem('content-wizard.drafts.v1') ?? '{}');
+    const draft = (step6.drafts ?? []).find((d) => d.id === step6.activeId) ?? (step6.drafts ?? [])[0];
+    const st = draft?.state ?? {};
+    return {
+      subjectWhat: st.subject?.what ?? '',
+      who: st.subject?.who?.label ?? '',
+      titleText: st.title?.selected?.text ?? '',
+      angleText: st.angle?.selected?.[0]?.text ?? '',
+      sections: blocks.map((b) => ({
+        id: b.getAttribute('data-section'),
+        cards: Array.from(b.querySelectorAll('.idea-card')).map((c) => ({
+          approach: (c.querySelector('.option-label .tag')?.textContent ?? '').trim(),
+          source: (c.querySelector('.source-tag')?.textContent ?? '').trim(),
+          text: (c.querySelector('.inspire-what')?.textContent ?? '').trim(),
+        })),
+        head: (b.querySelector('.ideas-head h3')?.textContent ?? '').trim(),
+        helper: Array.from(b.querySelectorAll('.helper')).map((n) => (n.textContent ?? '').trim()),
+      })),
+    };
+  });
+
+  check(
+    '第 6 步每一段都有至少 3 条参考写法',
+    ideaInfo.sections.length >= 3 && ideaInfo.sections.every((s) => s.cards.length >= 3),
+    `${ideaInfo.sections.length} 段，每段候选数：${ideaInfo.sections.map((s) => s.cards.length).join('/')}`,
+  );
+  check(
+    '参考写法带当前选题上下文（对谁说什么／切入点／标题）',
+    ideaInfo.sections.every(
+      (s) =>
+        s.cards.filter((c) => {
+          const hay = `${c.text}${c.approach}`;
+          return (
+            (!!ideaInfo.subjectWhat && hay.includes(ideaInfo.subjectWhat)) ||
+            (!!ideaInfo.titleText && hay.includes(ideaInfo.titleText)) ||
+            (!!ideaInfo.angleText && hay.includes(ideaInfo.angleText)) ||
+            (!!ideaInfo.who && hay.includes(ideaInfo.who))
+          );
+        }).length >= 3,
+    ),
+    `选题「${ideaInfo.subjectWhat.slice(0, 14)}…」`,
+  );
+  check(
+    '参考写法一次给 3–4 条不同角度的候选',
+    ideaInfo.sections.every((s) => s.cards.length >= 3 && s.cards.length <= 4) &&
+      ideaInfo.sections.every((s) => new Set(s.cards.map((c) => c.approach)).size === s.cards.length),
+    ideaInfo.sections[0]?.cards.map((c) => c.approach).join(' / '),
+  );
+  check(
+    '每条参考写法都标了来源，且不谎称联网检索',
+    ideaInfo.sections
+      .flatMap((s) => s.cards)
+      .every((c) => ['内置库', '模板推导', '模型生成'].includes(c.source)),
+    Array.from(new Set(ideaInfo.sections.flatMap((s) => s.cards.map((c) => c.source)))).join(' / '),
+  );
+  check(
+    '明说参考不是成稿、可以采纳也可以全改',
+    ideaInfo.sections.every((s) => s.helper.some((h) => h.includes('参考不是成稿') && h.includes('全改'))),
+    '不把参考当答案',
+  );
+
+  // 换一批：每段展示的候选要真的换掉
+  const ideaBefore = await page.$$eval('.ideas .idea-card .inspire-what', (ns) => ns.slice(0, 3).map((n) => n.textContent));
+  await page.evaluate(() => {
+    const first = document.querySelector('.ideas');
+    const btn = Array.from(first?.querySelectorAll('button.btn') ?? []).find((b) =>
+      (b.textContent ?? '').includes('换一批'),
+    );
+    btn?.click();
+  });
+  await sleep(500);
+  const ideaAfter = await page.$$eval('.ideas .idea-card .inspire-what', (ns) => ns.slice(0, 3).map((n) => n.textContent));
+  check(
+    '第 6 步的「换一批」给出不同角度的候选',
+    ideaBefore.length > 0 && ideaBefore[0] !== ideaAfter[0],
+    '而不是重复同一组',
+  );
+
+  // 一键扩写：把参考写法展开成「讲什么／举什么例子／给什么建议」
+  await page.evaluate(() => {
+    const first = document.querySelector('.ideas');
+    const btn = Array.from(first?.querySelectorAll('button.btn') ?? []).find((b) =>
+      (b.textContent ?? '').includes('扩写这段'),
+    );
+    btn?.click();
+  });
+  await page.waitForFunction(() => !!document.querySelector('.expansion'), { timeout: 6000 });
+  const expansionText = await page.$eval('.expansion', (n) => (n.textContent ?? '').replace(/\s+/g, ' ').trim());
+  check(
+    '「根据已定内容扩写这段」给出讲什么／举什么例子／给什么建议',
+    ['打算讲什么', '举什么例子', '给什么建议'].every((k) => expansionText.includes(k)),
+    expansionText.slice(0, 60) + '…',
+  );
+  await page.screenshot({ path: resolve(SHOTS, 'step6-expression.png'), fullPage: true });
 
   // ---------- 9. 生成简报 ----------
   await clickByText(page, 'button.btn.primary', '生成创作简报');
@@ -450,6 +576,15 @@ try {
     '不再用含义模糊的「给谁看」「对谁说」',
   );
   await page.screenshot({ path: resolve(SHOTS, 'step7-brief.png'), fullPage: true });
+
+  // ---------- 9b. 导出简报不等于清掉草稿 ----------
+  const draftAfterBrief = await activeDraft(page);
+  const boxAfterBrief = await page.$$eval('.draft-card', (ns) => ns.length);
+  check(
+    '导出简报后草稿仍留在草稿箱，不会被自动清掉',
+    !!draftAfterBrief && boxAfterBrief >= 1 && JSON.stringify(draftAfterBrief.state ?? {}).includes('约会'),
+    draftAfterBrief ? `草稿「${draftAfterBrief.title}」仍在，草稿箱 ${boxAfterBrief} 份` : '草稿不见了',
+  );
 
   // ---------- 10. 导出的 JSON 字段完整 ----------
   // 默认停在「简报 Markdown」标签，必须先切到 JSON 再读
@@ -497,19 +632,10 @@ try {
   await page.reload({ waitUntil: 'networkidle0' });
   await sleep(400);
   // 直接清掉草稿的主要字段，模拟「换台电脑/重新开始」后想用 JSON 找回
-  await page.evaluate(() => {
-    const key = 'content-wizard.draft.v1';
-    const d = JSON.parse(localStorage.getItem(key) ?? '{}');
-    d.subject = null;
-    d.angle = null;
-    d.title = null;
-    localStorage.setItem(key, JSON.stringify(d));
-  });
+  await patchActiveDraft(page, { subject: null, angle: null, title: null });
   await page.reload({ waitUntil: 'networkidle0' });
   await sleep(500);
-  const draftedAway = await page.evaluate(
-    () => JSON.parse(localStorage.getItem('content-wizard.draft.v1') ?? '{}')?.subject,
-  );
+  const draftedAway = (await activeDraft(page))?.state?.subject ?? null;
   check('已制造出缺字段的草稿（用于往返测试）', draftedAway === null, `导入前 index=${beforeImport}`);
 
   // 打开导入弹层，把刚才导出的 JSON 粘回去
@@ -545,25 +671,24 @@ try {
   await clickByText(page, '.modal button.btn.primary', '恢复并继续编辑');
   await sleep(600);
   const importDebug = await page.evaluate(() => {
-    const d = JSON.parse(localStorage.getItem('content-wizard.draft.v1') ?? '{}');
+    const store = JSON.parse(localStorage.getItem('content-wizard.drafts.v1') ?? '{}');
+    const d = (store.drafts ?? []).find((x) => x.id === store.activeId) ?? (store.drafts ?? [])[0];
     return {
       modalStillOpen: !!document.querySelector('#import-json'),
-      draftWho: d?.subject?.who?.label ?? null,
-      draftAngles: d?.angle?.selected?.length ?? 0,
+      draftWho: d?.state?.subject?.who?.label ?? null,
+      draftAngles: d?.state?.angle?.selected?.length ?? 0,
       notice: Array.from(document.querySelectorAll('.notice')).map((n) => (n.textContent ?? '').trim()),
     };
   });
   console.log('  [调试] 导入现场：', JSON.stringify(importDebug));
-  const restored = await page.evaluate(() => {
-    const d = JSON.parse(localStorage.getItem('content-wizard.draft.v1') ?? '{}');
-    return {
-      who: d?.subject?.who?.label ?? null,
-      what: d?.subject?.what ?? null,
-      angles: d?.angle?.selected?.length ?? 0,
-      title: d?.title?.selected?.text ?? null,
-      format: d?.expression?.format ?? null,
-    };
-  });
+  const restoredDraft = await activeDraft(page);
+  const restored = {
+    who: restoredDraft?.state?.subject?.who?.label ?? null,
+    what: restoredDraft?.state?.subject?.what ?? null,
+    angles: restoredDraft?.state?.angle?.selected?.length ?? 0,
+    title: restoredDraft?.state?.title?.selected?.text ?? null,
+    format: restoredDraft?.state?.expression?.format ?? null,
+  };
   check(
     'JSON 往返后选题被完整恢复',
     restored.who === '第一次做这件事的人' && !!restored.what,
@@ -601,8 +726,14 @@ try {
   // ---------- 11. 刷新后草稿不丢 ----------
   await page.reload({ waitUntil: 'networkidle0' });
   await sleep(400);
-  const afterReload = await page.evaluate(() => localStorage.getItem('content-wizard.draft.v1'));
-  check('刷新后草稿仍在 localStorage', !!afterReload && afterReload.includes('约会'));
+  const afterReload = await activeDraft(page);
+  check(
+    '刷新后草稿仍在草稿箱里',
+    !!afterReload && JSON.stringify(afterReload.state ?? {}).includes('约会'),
+    afterReload ? `草稿「${afterReload.title}」` : '没找到草稿',
+  );
+  const boxCount = await page.$$eval('.draft-card', (ns) => ns.length);
+  check('刷新后草稿箱仍然列出这份草稿', boxCount >= 1, `草稿箱 ${boxCount} 份`);
 
   // ---------- 12. 失效传播：改上游，下游立刻标待确认 ----------
   // 先把下游两步实走一遍再改上游，让「切入点 / 标题」各自留下确认过的快照。
@@ -669,15 +800,80 @@ try {
       .filter((p) => (p.textContent ?? '').includes('标题'))
       .some((p) => p.className.includes('stale')),
   );
-  check('改动第 3 步后「切入点」立刻标待确认', angleStale, '上游变了，旧选择不再成立');
+  check('改动第 3 步后「切入点」立刻标待确认', angleStale, '上游变了：这一步还没重新打开，先按待确认提醒');
   check('改动第 3 步后「标题」立刻标待确认', titleStale, '标题依赖受众与选题');
   await page.screenshot({ path: resolve(SHOTS, 'stale-propagation.png') });
 
-  // 进入第 4 步应看到待确认横幅
+  // ---------- 12b. 打开第 4 步：候选已经重生成 ⇒ 旧选择立即作废并清空（不是「待确认」） ----------
   await clickByText(page, 'button.step-pill', '切入点');
+  await sleep(600);
+  const angleAfterReopen = await page.evaluate(() => {
+    const store = JSON.parse(localStorage.getItem('content-wizard.drafts.v1') ?? '{}');
+    const d = (store.drafts ?? []).find((x) => x.id === store.activeId) ?? (store.drafts ?? [])[0];
+    return {
+      selected: d?.state?.angle?.selected?.length ?? 0,
+      banner: (document.querySelector('.reset-banner')?.textContent ?? '').replace(/\s+/g, ' ').trim(),
+      snapshot: d?.snapshots?.angle ?? null,
+      text: document.body.textContent ?? '',
+    };
+  });
+  check(
+    '改选题后进入第 4 步，已选切入点自动清空（不必手动取消）',
+    angleAfterReopen.selected === 0,
+    `已选 ${angleAfterReopen.selected} 个`,
+  );
+  check(
+    '清空时明确说明原因，不是静默清空',
+    angleAfterReopen.banner.includes('选题变了') &&
+      angleAfterReopen.banner.includes('切入点') &&
+      angleAfterReopen.banner.includes('已清空'),
+    angleAfterReopen.banner || '没抓到清空说明',
+  );
+  const titleStillStale = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('button.step-pill'))
+      .filter((p) => (p.textContent ?? '').includes('标题'))
+      .some((p) => p.className.includes('stale')),
+  );
+  check(
+    '两件事没有混在一起：答案被清空的步骤清空，答案还在的下游步骤仍只标「待确认」',
+    titleStillStale,
+    '「候选换了就清空」和「上游变了就待确认」分开处理',
+  );
+
+  // ---------- 12c. 自己手写的标题在候选重生成时不该被清掉，仍走「待确认」 ----------
+  await clickByText(page, 'button.step-pill', '标题');
+  await sleep(700);
+  await setInputValue(page, '#title-custom', '我自己的标题：先别急着下结论');
+  await clickByText(page, 'button.btn', '用这句', 'exact');
+  await sleep(300);
+  await next(page); // 走一步：这一步被「确认」过，之后才谈得上待确认
+  await sleep(300);
+  await clickByText(page, 'button.step-pill', '选题');
   await sleep(400);
-  text = await bodyText(page);
-  check('进入下游步骤时显示待确认横幅', text.includes('待确认：'), '要求重新确认而不是静默沿用');
+  await clickByText(page, 'button.option', '正在做选择、拿不定主意的人');
+  await sleep(400);
+  await clickByText(page, 'button.step-pill', '标题');
+  await sleep(700);
+  const customTitle = await page.evaluate(() => {
+    const store = JSON.parse(localStorage.getItem('content-wizard.drafts.v1') ?? '{}');
+    const d = (store.drafts ?? []).find((x) => x.id === store.activeId) ?? (store.drafts ?? [])[0];
+    return {
+      title: d?.state?.title?.selected?.text ?? null,
+      custom: (d?.state?.title?.selected?.id ?? '').startsWith('custom-'),
+      staleBanner: (document.querySelector('.stale-banner')?.textContent ?? '').replace(/\s+/g, ' ').trim(),
+      text: document.body.textContent ?? '',
+    };
+  });
+  check(
+    '自己手写的标题不会被「候选重生成」清掉',
+    customTitle.custom && customTitle.title === '我自己的标题：先别急着下结论',
+    `标题：${customTitle.title ?? '（被清掉了）'}`,
+  );
+  check(
+    '这种情况下走「待确认」，保留他的答案让他决定要不要沿用',
+    customTitle.staleBanner.includes('待确认'),
+    customTitle.staleBanner ? customTitle.staleBanner.slice(0, 40) + '…' : '没有待确认横幅',
+  );
 
   // ---------- 13. 无 Key + 外网不可达，仍能走完 ----------
   // 注意：不能直接 reload 后测，因为 SPA 全部由本机静态服务提供，整页断网测的是「静态资源能不能加载」，

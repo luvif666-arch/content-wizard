@@ -64,7 +64,7 @@ select {
 }
 
 .topbar-inner {
-  max-width: 860px;
+  max-width: 1180px;
   margin: 0 auto;
   padding: 12px 20px 10px;
   display: flex;
@@ -111,7 +111,7 @@ select {
 }
 
 .stepper {
-  max-width: 860px;
+  max-width: 1180px;
   margin: 0 auto;
   padding: 0 20px 10px;
   display: flex;
@@ -179,14 +179,6 @@ select {
 .step-pill.stale .num {
   background: var(--warn);
   color: #fff;
-}
-
-main {
-  flex: 1;
-  width: 100%;
-  max-width: 860px;
-  margin: 0 auto;
-  padding: 24px 20px 96px;
 }
 
 /* ---------- 步骤头部 ---------- */
@@ -592,6 +584,33 @@ textarea {
   text-underline-offset: 3px;
 }
 
+/* 「新建草稿」用实心强调色，但不占用 .btn.primary：
+   页面上的 .btn.primary 始终是「这一步的主操作」，验收脚本也按这个约定定位。 */
+.btn.new {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.btn.new:hover:not(:disabled) {
+  background: var(--accent-ink);
+}
+
+.btn.accent {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+.btn.danger {
+  border-color: #e5c4bd;
+  background: #fdf1ef;
+  color: var(--danger);
+  font-weight: 600;
+}
+
 .btn.small {
   min-height: 34px;
   padding: 5px 12px;
@@ -664,6 +683,243 @@ textarea {
   background: var(--warn-soft);
   border-radius: 999px;
   padding: 1px 9px;
+}
+
+/* ---------- 工作区：左边六步向导，右边草稿箱 ---------- */
+
+.workspace {
+  flex: 1;
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 20px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 26px;
+  align-items: start;
+}
+
+main {
+  min-width: 0;
+  padding: 24px 0 96px;
+}
+
+.wizard-col {
+  min-width: 0;
+}
+
+/* ---------- 草稿箱 ---------- */
+
+.draftbox {
+  position: sticky;
+  top: 104px;
+  margin-top: 24px;
+  padding: 14px 14px 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  max-height: calc(100vh - 132px);
+  overflow: auto;
+}
+
+.draftbox-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.draftbox-head h2 {
+  font-size: 15px;
+  margin: 0;
+}
+
+.draftbox-close,
+.draft-toggle {
+  display: none;
+}
+
+.draftbox-hint {
+  margin: 6px 0 10px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.draftbox-new {
+  width: 100%;
+}
+
+.draft-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.draft-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 10px 11px;
+  background: var(--bg);
+}
+
+.draft-card.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.draft-open {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.draft-title {
+  display: block;
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.draft-meta {
+  display: block;
+  font-size: 12px;
+  color: var(--ink-faint);
+  margin-top: 3px;
+}
+
+.draft-current {
+  display: inline-block;
+  margin-top: 6px;
+  background: var(--accent);
+  color: #fff;
+}
+
+.draft-card-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.draft-confirm-text {
+  display: block;
+  font-size: 12.5px;
+  color: var(--danger);
+  margin-bottom: 6px;
+  overflow-wrap: anywhere;
+}
+
+.draft-rename input {
+  margin-bottom: 8px;
+}
+
+.drawer-backdrop {
+  display: none;
+}
+
+/* ---------- 第 6 步：每一段的参考写法 ---------- */
+
+.section-block {
+  display: grid;
+}
+
+.ideas {
+  margin: 10px 0 0 36px;
+  padding: 12px 14px 14px;
+  background: #fbfbf9;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+}
+
+.ideas-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.ideas-head h3 {
+  font-size: 14px;
+  margin: 0;
+}
+
+.ideas .helper {
+  margin: 0 0 8px;
+}
+
+.idea-card {
+  border-style: dashed;
+  padding: 10px 12px;
+}
+
+.idea-card.selected {
+  border-style: solid;
+}
+
+.tag-adopted {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* 来源标签按档位分色：内置库 / 模板推导 / 模型生成 / 联网检索 必须一眼分得开 */
+.tag.source-preset {
+  background: #ecebe6;
+  color: var(--ink-soft);
+}
+
+.tag.source-template {
+  background: #eef1f6;
+  color: #43506b;
+}
+
+.tag.source-model {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+.tag.source-search {
+  background: var(--accent);
+  color: #fff;
+}
+
+.expansion {
+  margin-top: 12px;
+  padding: 11px 13px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+}
+
+.expansion p {
+  margin: 0 0 8px;
+}
+
+.expansion p:last-of-type {
+  margin-bottom: 0;
+}
+
+/* ---------- 候选重生成后的清空说明 ---------- */
+
+.reset-banner {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 0 0 16px;
+}
+
+.reset-banner .grow {
+  flex: 1 1 240px;
 }
 
 /* ---------- 清单 ---------- */
@@ -883,6 +1139,51 @@ pre.raw {
 
   .modal {
     border-radius: 18px;
+  }
+}
+
+/* 窄屏：草稿箱折叠成抽屉，六步主流程独占整屏，不被挤掉 */
+@media (max-width: 999px) {
+  .workspace {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+
+  .draft-toggle,
+  .draftbox-close {
+    display: inline-flex;
+  }
+
+  .draftbox {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 60;
+    width: min(340px, 88vw);
+    margin: 0;
+    max-height: none;
+    border-radius: 0;
+    border-left: 1px solid var(--line);
+    transform: translateX(102%);
+    transition: transform 0.2s ease;
+    box-shadow: -10px 0 28px rgba(31, 35, 32, 0.16);
+  }
+
+  .draftbox.open {
+    transform: none;
+  }
+
+  .drawer-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+    background: rgba(31, 35, 32, 0.35);
+  }
+
+  .ideas {
+    margin-left: 0;
   }
 }
 

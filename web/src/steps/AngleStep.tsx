@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
-import { getAngles } from '../lib/model';
+import { useEffect, useMemo, useState } from 'react';
+import { basisKeyOf, clearReason, describeBasisChange, optionStillOffered } from '../lib/candidates';
+import { SOURCE_LABEL, getAngles } from '../lib/model';
 import type { CandidateSource, GenContext, ModelPrefs } from '../lib/model';
 import type { AngleAnswer, AngleOption } from '../types';
 
@@ -8,9 +9,12 @@ interface Props {
   ctx: GenContext;
   prefs: ModelPrefs;
   onChange: (v: AngleAnswer) => void;
+  /** 候选重新生成、旧选择作废时调用：由 App 统一清空这一步的答案与「已确认」快照，并把原因显示给用户 */
+  onInvalidate: (reason: string) => void;
 }
 
 const MAX_ANGLES = 3;
+const LAYER = '切入点';
 
 /**
  * 切入点与选题目标的一致性校验。
@@ -26,13 +30,27 @@ function checkConsistency(selected: AngleOption[], subjectWhat: string): string 
 }
 
 /** 第 4 步：切入点。6 类各给一个结合当前选题的候选，选 1–3 个并排序。 */
-export default function AngleStep({ value, ctx, prefs, onChange }: Props) {
+export default function AngleStep({ value, ctx, prefs, onChange, onInvalidate }: Props) {
   const [options, setOptions] = useState<AngleOption[]>([]);
   const [source, setSource] = useState<CandidateSource>('preset');
   const [note, setNote] = useState<string | undefined>();
   const [loading, setLoading] = useState(true);
+  /** 换一批的批次号：只用来触发重新生成，不参与「依据」判定 */
+  const [batch, setBatch] = useState(0);
 
   const selected = value?.selected ?? [];
+
+  // 这批候选是按什么生成出来的。上游里任何会影响切入点文案的字段都要算进来。
+  const basis = useMemo(
+    () => ({
+      audience: ctx.audienceLabel,
+      topic: `${ctx.topic?.big ?? ''}|${(ctx.topic?.subs ?? []).join(',')}`,
+      subject: `${ctx.subject?.who.label ?? ''}|${ctx.subject?.what ?? ''}`,
+      model: `${prefs.baseUrl}#${prefs.model}`,
+    }),
+    [ctx.audienceLabel, ctx.topic?.big, ctx.topic?.subs, ctx.subject?.who.label, ctx.subject?.what, prefs.baseUrl, prefs.model],
+  );
+  const genKey = basisKeyOf(basis);
 
   useEffect(() => {
     let cancelled = false;
@@ -48,20 +66,45 @@ export default function AngleStep({ value, ctx, prefs, onChange }: Props) {
     return () => {
       cancelled = true;
     };
-    // 上游选题一改，候选必须重新生成，否则文案会和当前选题对不上
+    // 上游选题一改，或用户点了「换一批」，候选都必须重新生成，否则文案会和当前选题对不上
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    ctx.subject?.who.label,
-    ctx.subject?.what,
-    ctx.topic?.subs.join(','),
-    ctx.audienceLabel,
-    prefs.apiKey,
-    prefs.baseUrl,
-    prefs.model,
-  ]);
+  }, [genKey, batch]);
+
+  /**
+   * 候选一重生成，基于旧候选的选择就必须立刻作废——不能等用户手动取消。
+   * 直接清空（不是标「待确认」）：待确认是留给「已经确认过、上游动了」的下游步骤的；
+   * 这里选项本身换了，旧答案连参照物都没有，保留只会变成误导。
+   *
+   * 判据分两种：
+   *  - 这一步的选择是本次在应用里做的 ⇒ 记过依据，依据对不上就直接清空（不看文案是否碰巧相同，
+   *    因为「上游动了」本身就意味着这批候选已经不是用户当初挑的那一批）；
+   *  - 没有记录依据（旧版草稿 / 从 JSON 恢复 / 分享链接进来）⇒ 退化为「文案还在不在候选里」，
+   *    还在就认它仍然成立并补记依据，不在才清空。导入的数据不该一进来就被判废。
+   */
+  const optionsKey = useMemo(() => options.map((o) => `${o.id}:${o.text}`).join('|'), [options]);
+  useEffect(() => {
+    if (!optionsKey) return;
+    const current = value?.selected ?? [];
+    if (!current.length) return;
+    if (value?.basisKey !== undefined) {
+      if (value.basisKey === genKey) return;
+      onInvalidate(clearReason(LAYER, describeBasisChange(value.basisKey, basis)));
+      return;
+    }
+    if (current.every((a) => optionStillOffered(a, options))) {
+      onChange({
+        selected: current,
+        consistencyAcknowledged: value?.consistencyAcknowledged ?? false,
+        basisKey: genKey,
+      });
+      return;
+    }
+    onInvalidate(clearReason(LAYER, null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [optionsKey, genKey]);
 
   function emit(next: AngleOption[]) {
-    onChange({ selected: next, consistencyAcknowledged: value?.consistencyAcknowledged ?? false });
+    onChange({ selected: next, consistencyAcknowledged: value?.consistencyAcknowledged ?? false, basisKey: genKey });
   }
 
   function toggle(opt: AngleOption) {
@@ -80,6 +123,18 @@ export default function AngleStep({ value, ctx, prefs, onChange }: Props) {
     const next = [...selected];
     [next[index], next[target]] = [next[target], next[index]];
     emit(next);
+  }
+
+  /** 换一批：候选会整批换掉，所以旧选择同时作废并说明原因 */
+  function rotate() {
+    if (!prefs.apiKey) {
+      setNote('内置候选是按当前选题推导出的六类入口，没有更多批次；在「设置」里填上模型可以按选题再生成一批。');
+      return;
+    }
+    if (selected.length) {
+      onInvalidate(`你点了「换一批」，候选已经重新生成，原来的${LAYER}作废，请重新选。`);
+    }
+    setBatch((b) => b + 1);
   }
 
   const warning = checkConsistency(selected, ctx.subject?.what ?? '');
@@ -106,7 +161,7 @@ export default function AngleStep({ value, ctx, prefs, onChange }: Props) {
       <h2>
         选 1–{MAX_ANGLES} 个入口
         <span className="tag" style={{ marginLeft: 8 }}>
-          {source === 'model' ? '模型生成' : '内置规则'}
+          {SOURCE_LABEL[source]}
         </span>
         <span className="tag" style={{ marginLeft: 6 }}>
           已选 {selected.length}/{MAX_ANGLES}
@@ -135,6 +190,15 @@ export default function AngleStep({ value, ctx, prefs, onChange }: Props) {
             </button>
           );
         })}
+      </div>
+
+      <div className="actions">
+        <button type="button" className="btn small" onClick={rotate} disabled={loading}>
+          {loading ? '生成中…' : '换一批'}
+        </button>
+        <span className="helper" style={{ margin: 0 }}>
+          换一批会重新生成候选，已选的入口会同时清空。
+        </span>
       </div>
 
       {selected.length > 0 && (
@@ -182,7 +246,7 @@ export default function AngleStep({ value, ctx, prefs, onChange }: Props) {
             <button
               type="button"
               className="btn small"
-              onClick={() => onChange({ selected, consistencyAcknowledged: true })}
+              onClick={() => onChange({ selected, consistencyAcknowledged: true, basisKey: genKey })}
             >
               我知道了，正文会回到选题目标
             </button>

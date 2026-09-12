@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
-import { getTitles } from '../lib/model';
+import { useEffect, useMemo, useState } from 'react';
+import { basisKeyOf, clearReason, describeBasisChange, optionStillOffered } from '../lib/candidates';
+import { SOURCE_LABEL, getTitles } from '../lib/model';
 import type { CandidateSource, GenContext, ModelPrefs } from '../lib/model';
 import type { TitleAnswer, TitleOption } from '../types';
 
@@ -8,17 +9,31 @@ interface Props {
   ctx: GenContext;
   prefs: ModelPrefs;
   onChange: (v: TitleAnswer) => void;
+  /** 候选重新生成、旧选择作废时调用（自己手写的标题不算「基于候选」，不会被清掉） */
+  onInvalidate: (reason: string) => void;
 }
 
+const LAYER = '标题';
+
 /** 第 5 步：标题。三种句式各 1 条，每条必须带生成理由；也可以自己写。 */
-export default function TitleStep({ value, ctx, prefs, onChange }: Props) {
+export default function TitleStep({ value, ctx, prefs, onChange, onInvalidate }: Props) {
   const [options, setOptions] = useState<TitleOption[]>([]);
   const [source, setSource] = useState<CandidateSource>('preset');
   const [note, setNote] = useState<string | undefined>();
   const [loading, setLoading] = useState(true);
   const [custom, setCustom] = useState('');
+  const [batch, setBatch] = useState(0);
 
-  const key = `${ctx.audienceLabel}|${ctx.subject?.who.label ?? ''}|${ctx.subject?.what ?? ''}`;
+  const basis = useMemo(
+    () => ({
+      audience: ctx.audienceLabel,
+      topic: `${ctx.topic?.big ?? ''}|${(ctx.topic?.subs ?? []).join(',')}`,
+      subject: `${ctx.subject?.who.label ?? ''}|${ctx.subject?.what ?? ''}`,
+      model: `${prefs.baseUrl}#${prefs.model}`,
+    }),
+    [ctx.audienceLabel, ctx.topic?.big, ctx.topic?.subs, ctx.subject?.who.label, ctx.subject?.what, prefs.baseUrl, prefs.model],
+  );
+  const genKey = basisKeyOf(basis);
 
   useEffect(() => {
     let cancelled = false;
@@ -35,9 +50,47 @@ export default function TitleStep({ value, ctx, prefs, onChange }: Props) {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, prefs.apiKey, prefs.baseUrl, prefs.model]);
+  }, [genKey, batch]);
 
   const selected = value?.selected ?? null;
+  /** 自己手写的标题：它的参照物是用户的判断，不是这批候选，所以不该被候选重生成清掉 */
+  const isCustom = !!selected && selected.id.startsWith('custom-');
+
+  const optionsKey = useMemo(() => options.map((o) => `${o.id}:${o.text}`).join('|'), [options]);
+  // 同第 4 步：候选换了，基于旧候选选的标题立刻作废并说明原因；手写标题保留，交给「待确认」机制。
+  // 依据记过就严格比对；没记过（旧草稿 / JSON 恢复）就看文案是否还在候选里，还在就补记依据。
+  useEffect(() => {
+    if (!optionsKey) return;
+    const current = value?.selected;
+    if (!current) return;
+    if (current.id.startsWith('custom-')) return;
+    if (value?.basisKey !== undefined) {
+      if (value.basisKey === genKey) return;
+      onInvalidate(clearReason(LAYER, describeBasisChange(value.basisKey, basis)));
+      return;
+    }
+    if (optionStillOffered(current, options)) {
+      onChange({ selected: current, basisKey: genKey });
+      return;
+    }
+    onInvalidate(clearReason(LAYER, null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [optionsKey, genKey]);
+
+  function pickTitle(opt: TitleOption) {
+    onChange({ selected: opt, basisKey: genKey });
+  }
+
+  function rotate() {
+    if (!prefs.apiKey) {
+      setNote('内置标题是按当前受众与选题推导的三种句式，没有更多批次；在「设置」里填上模型可以再生成一批。');
+      return;
+    }
+    if (selected && !isCustom) {
+      onInvalidate(`你点了「换一批」，候选已经重新生成，原来的${LAYER}作废，请重新选。`);
+    }
+    setBatch((b) => b + 1);
+  }
 
   return (
     <div>
@@ -56,7 +109,7 @@ export default function TitleStep({ value, ctx, prefs, onChange }: Props) {
       <h2>
         候选
         <span className="tag" style={{ marginLeft: 8 }}>
-          {source === 'model' ? '模型生成' : '内置句式'}
+          {SOURCE_LABEL[source]}
         </span>
       </h2>
 
@@ -69,7 +122,7 @@ export default function TitleStep({ value, ctx, prefs, onChange }: Props) {
               type="button"
               className={`option${isSelected ? ' selected' : ''}`}
               aria-pressed={isSelected}
-              onClick={() => onChange({ selected: opt })}
+              onClick={() => pickTitle(opt)}
             >
               <span className="option-label">
                 <span className="check" aria-hidden="true" />
@@ -80,6 +133,15 @@ export default function TitleStep({ value, ctx, prefs, onChange }: Props) {
             </button>
           );
         })}
+      </div>
+
+      <div className="actions">
+        <button type="button" className="btn small" onClick={rotate} disabled={loading}>
+          {loading ? '生成中…' : '换一批'}
+        </button>
+        <span className="helper" style={{ margin: 0 }}>
+          换一批会重新生成候选，基于候选选的标题会同时清空（自己手写的那句会留下）。
+        </span>
       </div>
 
       <div className="field" style={{ marginTop: 18 }}>
@@ -104,6 +166,7 @@ export default function TitleStep({ value, ctx, prefs, onChange }: Props) {
                   text: custom.trim(),
                   reason: `这是你自己写的一句。判断标准：它能不能让「${ctx.audienceLabel || '你想对话的人'}」看出这跟自己有关、并且愿意点进来。`,
                 },
+                basisKey: genKey,
               })
             }
           >
