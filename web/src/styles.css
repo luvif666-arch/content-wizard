@@ -228,6 +228,116 @@ h2 {
   font-size: 13px;
 }
 
+/* 步骤做完之后才出现的原文摘录：淡入，避免像一上来就压过来的理论 */
+.quote.reveal {
+  animation: reveal-in 0.28s ease-out;
+  border-left-color: var(--accent);
+  color: var(--ink-soft);
+}
+
+.quote-tag {
+  display: inline-block;
+  margin-right: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+@keyframes reveal-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---------- 步骤 1 的定位卡片 ---------- */
+
+.orient {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  margin-bottom: 22px;
+  font-size: 14px;
+  color: var(--ink-soft);
+  box-shadow: var(--shadow);
+}
+
+.orient p {
+  margin: 0 0 10px;
+}
+
+.orient p:last-child {
+  margin-bottom: 0;
+}
+
+.orient-lead {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.orient-perspective {
+  padding-top: 10px;
+  border-top: 1px dashed var(--line-strong);
+}
+
+.orient-perspective strong {
+  color: var(--ink);
+}
+
+/* ---------- 步骤 3 的灵感示例 ---------- */
+
+.inspire {
+  margin: 22px 0;
+  padding: 16px 18px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.inspire-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.inspire-head h2 {
+  font-size: 16px;
+}
+
+.inspire-card {
+  border-style: dashed;
+}
+
+.inspire-card.selected {
+  border-style: solid;
+}
+
+.inspire-what {
+  display: block;
+  margin-top: 6px;
+  font-size: 14px;
+  color: var(--ink);
+  line-height: 1.55;
+}
+
+/* 联网来源才用这个强调色；目前应用没有联网检索能力，正常不会出现 */
+.tag-live {
+  background: var(--accent);
+  color: #fff;
+}
+
 /* ---------- 选项卡片 ---------- */
 
 .option-list {

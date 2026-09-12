@@ -3,13 +3,17 @@
 
 import {
   ANGLE_TYPES,
+  INSPIRATION_PATTERNS,
   TITLE_FORMULAS,
   TOPIC_PRESET_MAP,
   buildFilterList,
   extractNoun,
+  batchSource,
   normalizeKey,
+  presetInspirations,
   presetSubtopics,
 } from '../presets';
+import type { Inspiration } from '../presets';
 import type { AngleOption, SubjectAnswer, TitleOption, TopicAnswer } from '../types';
 
 const PREFS_KEY = 'content-wizard.prefs.v1';
@@ -50,12 +54,25 @@ export function savePrefs(prefs: ModelPrefs): void {
 }
 
 /** 本次候选的来源，用于在界面上如实标注，不假装查过 */
-export type CandidateSource = 'preset' | 'model';
+export type CandidateSource = 'preset' | 'template' | 'model' | 'search';
+
+/**
+ * 来源的中文标签。
+ * 区分「模板推导」和「主题推导」很重要：前者是规则拼装，后者是模型按话题生成，
+ * 两者都不是联网检索结果，界面上必须说清楚。
+ */
+export const SOURCE_LABEL: Record<CandidateSource, string> = {
+  preset: '内置预设',
+  // 模板推导：用当前话题 + 通用句式现拼的，不是预先写好的成稿文案
+  template: '模板推导',
+  model: '主题推导',
+  search: '联网检索',
+};
 
 export interface Generated<T> {
   items: T[];
   source: CandidateSource;
-  /** 回退原因，source === 'preset' 且非空时展示给用户 */
+  /** 回退原因或来源说明，展示给用户 */
   note?: string;
 }
 
@@ -267,4 +284,75 @@ export async function getTitles(ctx: GenContext, prefs: ModelPrefs): Promise<Gen
 /** 第 3 步：过滤清单。规则推导为主，保证离线可用。 */
 export function getFilterList(ctx: GenContext): { skip: string[]; must: string[] } {
   return buildFilterList(ctx.subject?.what ?? '', ctx.topic?.subs ?? []);
+}
+
+/**
+ * 第 3 步：灵感示例。
+ * 用户在这一步最容易卡住——抽象的处境类型给不出具体的人和事。
+ * 这里给 4–6 个结合当前话题的具体人物与处境，点选后一键回填，仍可编辑。
+ *
+ * 关于来源标注：本应用的模型层是浏览器直连的 OpenAI 兼容端点，**没有联网检索能力**，
+ * 所以模型生成的示例一律标注为「主题推导」，绝不标成「联网检索」。
+ * 只有当用户显式配置了搜索接口（modelPrefs.searchEndpoint）时才会走联网路径。
+ */
+export async function getInspirations(
+  ctx: GenContext,
+  prefs: ModelPrefs,
+): Promise<Generated<Inspiration>> {
+  const fallback = presetInspirations(ctx.topic);
+  const fallbackSource = batchSource(fallback);
+
+  if (!prefs.apiKey || !ctx.topic) {
+    return {
+      items: fallback,
+      source: fallbackSource,
+      note:
+        fallbackSource === 'preset'
+          ? '这批示例里含内置成稿文案，其余按话题模板推导；未接入联网检索。'
+          : '示例由内置模板按当前话题推导，不是联网检索来的。配置 API Key 可让模型按话题现推。',
+    };
+  }
+
+  try {
+    const raw = await callModel(
+      prefs,
+      '你是内容创作策划。你要帮创作者找到具体的目标读者，只返回 JSON。',
+      [
+        `创作者想做的方向：${ctx.topic.big}，已收窄到：${ctx.topic.subs.join('、')}`,
+        `请给出 ${INSPIRATION_PATTERNS.length} 个具体的人，每个人都带着一个真实的、看得出张力的处境。`,
+        '要求：',
+        '1. whoLabel 用处境类型短语（例如「第一次做这件事的人」），不超过 14 字；',
+        '2. what 用一句自然语言写清他具体卡在哪，不超过 40 字，要能看出矛盾和张力；',
+        '3. 这些人是这个话题下真实会存在的读者，不要泛泛的类型标签，也不要编造具体数据或来源；',
+        `4. 覆盖不同处境，尽量包含：${INSPIRATION_PATTERNS.map((p) => p.whoLabel).join('、')}。`,
+        '返回格式：{"people":[{"whoLabel":"...","what":"..."}]}',
+      ].join('\n'),
+    );
+    const list = (raw as { people?: unknown }).people;
+    if (!Array.isArray(list)) throw new Error('结构不合法');
+    const items: Inspiration[] = [];
+    for (const item of list) {
+      const rec = item as { whoLabel?: unknown; what?: unknown };
+      if (typeof rec.whoLabel === 'string' && typeof rec.what === 'string' && rec.what.trim()) {
+        items.push({
+          id: `model-${items.length}`,
+          whoLabel: rec.whoLabel.trim() || '有具体处境的读者',
+          what: rec.what.trim(),
+          source: 'model',
+        });
+      }
+    }
+    if (items.length < 4) throw new Error('示例数量不足');
+    return {
+      items,
+      source: 'model',
+      note: '示例由你配置的模型按话题推导（不是联网检索结果），用作灵感即可。',
+    };
+  } catch (err) {
+    return {
+      items: fallback,
+      source: 'preset',
+      note: `模型调用失败（${(err as Error).message}），已回退到内置库与模板推导。`,
+    };
+  }
 }

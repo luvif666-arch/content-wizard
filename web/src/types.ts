@@ -103,6 +103,20 @@ export const OUTPUT_FORMAT_LABEL: Record<OutputFormat, string> = {
   carousel: '多图轮播',
 };
 
+/**
+ * 每一步对应的原文摘录，取自 docs/flow.json 的 articleMapping。
+ * 用途：告诉用户这一步在解决什么。刻意在「用户做完这一步之后」才出现，
+ * 避免在选择之前用理论干扰判断。
+ */
+export const STEP_ARTICLE_QUOTE: Record<StepId, string> = {
+  audience: '你跟一个刚认识的人吃饭，会先抿一下你们大概能打成什么关系。',
+  topic: '话题给了我们一个讨论的方向……但如果你说"我今天想做一条情感内容"，我还是不知道你准备讲什么。',
+  subject: '这里面得有一个具体的人，也有一件具体的事。',
+  angle: '同一个选题，换一个切入点，需要准备的例子、信息和表达顺序都会跟着变。',
+  title: '标题最重要的地方，是让对的人愿意进入这段对话。',
+  expression: '知道对方现在理解到哪里，然后把下一步接给他。',
+};
+
 export function emptyState(): WizardState {
   return {
     audience: null,

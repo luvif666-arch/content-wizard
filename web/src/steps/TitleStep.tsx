@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { getTitles } from '../lib/model';
 import type { CandidateSource, GenContext, ModelPrefs } from '../lib/model';
 import type { TitleAnswer, TitleOption } from '../types';
+import StepQuote from './StepQuote';
 
 interface Props {
   value: TitleAnswer | null;
@@ -44,8 +45,10 @@ export default function TitleStep({ value, ctx, prefs, onChange }: Props) {
       <div className="step-head">
         <div className="eyebrow">第 5 步 · 标题</div>
         <h1>用哪句话开启这段对话？</h1>
-        <p className="lede">标题最重要的地方，是让对的人愿意进入这段对话。</p>
-        <p className="quote">只有让他点进来，你才有机会继续对他把话讲下去。</p>
+        <p className="lede">
+          这句话是<strong>你</strong>对<strong>读者</strong>说的第一句话。判断标准只有一个：他会不会觉得
+          「这说的就是我」而愿意点进来。
+        </p>
       </div>
 
       {note && <div className="notice info">{note}</div>}
@@ -119,6 +122,8 @@ export default function TitleStep({ value, ctx, prefs, onChange }: Props) {
           </p>
         </div>
       )}
+
+      {selected && <StepQuote step="title" />}
     </div>
   );
 }

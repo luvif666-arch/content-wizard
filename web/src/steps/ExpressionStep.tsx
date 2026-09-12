@@ -1,6 +1,7 @@
 import { DEFAULT_SECTIONS, FORMAT_FOLLOW_UPS } from '../presets';
 import { OUTPUT_FORMAT_LABEL } from '../types';
 import type { ExpressionAnswer, ExpressionSection, OutputFormat } from '../types';
+import StepQuote from './StepQuote';
 
 interface Props {
   value: ExpressionAnswer | null;
@@ -65,7 +66,10 @@ export default function ExpressionStep({ value, onChange }: Props) {
       <div className="step-head">
         <div className="eyebrow">第 6 步 · 表达</div>
         <h1>你准备用什么让对方理解你的判断？</h1>
-        <p className="lede">知道对方现在理解到哪里，然后把下一步接给他。</p>
+        <p className="lede">
+          你要顺着<strong>读者</strong>已经理解到的地方往下接：先给场景让他认出现象，
+          再解释为什么值得在意，最后给出他能立刻用上的建议。
+        </p>
       </div>
 
       <h2>正文结构</h2>
@@ -167,6 +171,8 @@ export default function ExpressionStep({ value, onChange }: Props) {
           </div>
         </>
       )}
+
+      {sections.length > 0 && <StepQuote step="expression" />}
     </div>
   );
 }

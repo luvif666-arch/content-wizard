@@ -115,6 +115,42 @@ try {
   let text = await bodyText(page);
   check('页面能加载并渲染第 1 步', text.includes('这条内容是给谁看的'), '无白屏、无报错');
 
+  // ---------- 1b. 定位卡片：没读过原文也能看懂自己在回答什么 ----------
+  const orient = await page.$eval('.orient', (el) => (el.textContent ?? '').replace(/\s+/g, ' ').trim()).catch(() => '');
+  check(
+    '第 1 步有定位卡片讲清「跟一个人聊天」的参照系',
+    orient.includes('跟一个人聊天') && orient.includes('对面坐着谁'),
+    orient ? `卡片开头：${orient.slice(0, 34)}…` : '没找到 .orient',
+  );
+  check(
+    '定位卡片说明使用者是创作者、并交代「你／他」指谁',
+    orient.includes('你是创作者') && orient.includes('读者'),
+    '不必再倒推是谁的视角',
+  );
+  check(
+    '定位卡片不剧透后面的步骤',
+    !orient.includes('切入点') && !orient.includes('选题') && !orient.includes('标题'),
+    '只讲类比，不提前给结论',
+  );
+
+  // 只检查 5 个受众预设；「其他（我自己描述）」的说明是操作指引，不适用这条规则
+  let hintTexts = await page.$$eval('button.option:not(:last-of-type) .option-hint', (ns) =>
+    ns.map((n) => (n.textContent ?? '').trim()),
+  );
+  check(
+    '受众选项的说明用第二人称，看不出是谁的视角就不合格',
+    hintTexts.length >= 5 &&
+      hintTexts.every((h) => h.startsWith('你') || h.startsWith('他')) &&
+      // 不能出现指代不明的「我」——之前写的是「对我和我的领域一无所知」
+      hintTexts.every((h) => !h.includes('我')),
+    hintTexts.slice(0, 2).join(' / '),
+  );
+  check(
+    '摘录在用户做完这一步之前不出现',
+    !text.includes('抿一下你们大概能打成什么关系'),
+    '选择之前不出现，避免用理论干扰判断',
+  );
+
   // ---------- 2. 未填不能前进（不能跳过步骤） ----------
   let disabled = await nextDisabled(page);
   let notes = await notices(page);
@@ -126,6 +162,14 @@ try {
 
   // ---------- 3. 第 1 步：受众 ----------
   await clickByText(page, 'button.option', '已关注我的人');
+  await sleep(250);
+  text = await bodyText(page);
+  check(
+    '选完之后才显示该步的原文摘录',
+    text.includes('抿一下你们大概能打成什么关系'),
+    '属于回看用的理论，放在决定之后',
+  );
+
   await next(page);
   text = await bodyText(page);
   check('第 1 步可选并进入第 2 步', text.includes('你想聊哪个大方向'));
@@ -157,6 +201,105 @@ try {
   await next(page);
   text = await bodyText(page);
   check('第 2 步可多选并进入第 3 步', text.includes('这次你要对谁说什么'));
+
+  // ---------- 5b. 第 3 步的灵感示例 ----------
+  await page.waitForSelector('.inspire-card', { timeout: 6000 });
+  const inspireInfo = await page.evaluate(() => {
+    const cards = Array.from(document.querySelectorAll('.inspire-card'));
+    return {
+      count: cards.length,
+      labels: cards.map((c) => (c.querySelector('.tag')?.textContent ?? '').trim()),
+      texts: cards.map((c) => (c.querySelector('.inspire-what')?.textContent ?? '').trim()),
+      source: (document.querySelector('.inspire-head .tag')?.textContent ?? '').trim(),
+      helper: Array.from(document.querySelectorAll('.inspire .helper')).map((n) => (n.textContent ?? '').trim()),
+    };
+  });
+  check(
+    '第 3 步给出 4 条以上结合当前话题的灵感示例',
+    inspireInfo.count >= 4,
+    `${inspireInfo.count} 条，处境类型：${inspireInfo.labels.slice(0, 2).join('、')}…`,
+  );
+  // 相关性判断要对着实际选中的子话题，不能写死成某个词
+  const selectedSubs = await page.evaluate(() =>
+    (document.body.textContent ?? '').match(/已选范围：([^\n]+)/)?.[1] ?? '',
+  );
+  check(
+    '示例是具体的人和事，不是泛泛的类型标签',
+    // 注意：内置成稿文案（如「一提到确定关系对方就转移话题」）是领域特异的，
+    // 但不会逐字出现话题名，所以这里只要求「至少一条明确带话题词 + 每条都足够具体」。
+    // 离题话题的严格相关性由 verify-coverage.mjs 专项验收。
+    inspireInfo.texts.every((t) => t.length >= 12) && inspireInfo.texts.some((t) => t.includes('暧昧期')),
+    `例如：${inspireInfo.texts[0]?.slice(0, 30)}…`,
+  );
+  check(
+    '示例标注来源，且不谎称联网检索',
+    ['内置预设', '模板推导', '主题推导'].includes(inspireInfo.source),
+    `来源标注为「${inspireInfo.source}」`,
+  );
+  check(
+    '明说示例只是起点、可以改',
+    inspireInfo.helper.some((h) => h.includes('随便改') || h.includes('只是起点')),
+    '启发而非替用户决定',
+  );
+
+  // 一键回填
+  await page.evaluate(() => document.querySelector('.inspire-card')?.click());
+  await sleep(300);
+  const afterFill = await page.evaluate(() => {
+    const ta = document.querySelector('#subject-what');
+    const sel = document.querySelector('.option.selected .option-label');
+    return {
+      what: ta instanceof HTMLTextAreaElement ? ta.value : '',
+      whoLabel: (sel?.textContent ?? '').replace(/\s+/g, ' ').trim(),
+      notice: Array.from(document.querySelectorAll('.notice')).map((n) => (n.textContent ?? '').trim()),
+    };
+  });
+  check(
+    '点一条示例即可一键填上「他是谁」和「你要讲什么」',
+    !!afterFill.what && afterFill.whoLabel.length > 0,
+    `人=${afterFill.whoLabel}｜事=${afterFill.what.slice(0, 20)}…`,
+  );
+  check(
+    '填入后提示这是起点、可自由修改',
+    afterFill.notice.some((n) => n.includes('随便改') || n.includes('起点')),
+    '不把示例当答案',
+  );
+
+  // 用户大改之后，示例的「已填入」状态要撤掉，不试图改回去
+  await page.type('#subject-what', '，另外补充一点我自己的观察');
+  await sleep(250);
+  const afterEdit = await page.evaluate(() => ({
+    stillMarked: !!document.querySelector('.inspire-card.selected'),
+    value: (document.querySelector('#subject-what'))?.value ?? '',
+  }));
+  check(
+    '用户改动后不再标示该示例、也不覆盖他的修改',
+    !afterEdit.stillMarked && afterEdit.value.includes('我自己的观察'),
+    '尊重用户对角色的最终决定权',
+  );
+
+  // 「换一批」必须给出不同角度
+  const before = await page.$$eval('.inspire-card .inspire-what', (ns) => ns.map((n) => n.textContent));
+  await clickByText(page, 'button.btn', '换一批');
+  await sleep(400);
+  const after = await page.$$eval('.inspire-card .inspire-what', (ns) => ns.map((n) => n.textContent));
+  check(
+    '「换一批」给的是不同角度的示例',
+    before.length > 0 && after.length > 0 && before[0] !== after[0],
+    '而不是重复同一组',
+  );
+  await page.screenshot({ path: resolve(SHOTS, 'step3-inspiration.png'), fullPage: true });
+
+  // 把干扰内容清掉，回到只填一半的状态继续后面的流程
+  await page.evaluate(() => {
+    const ta = document.querySelector('#subject-what');
+    if (ta instanceof HTMLTextAreaElement) {
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+      setter?.call(ta, '');
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  });
+  await sleep(200);
 
   // ---------- 5. 第 3 步：只填一半不能前进 ----------
   await clickByText(page, 'button.option', '第一次做这件事的人');
@@ -243,6 +386,11 @@ try {
   text = await bodyText(page);
   check('能生成创作简报', text.includes('创作简报') && text.includes('关系') && text.includes('切入点'));
   check('简报包含「这次不讲」的过滤清单', text.includes('这次不讲'));
+  check(
+    '简报里写明了视角（你/创作者 要对谁讲）',
+    text.includes('你（创作者）要讲给谁') && text.includes('要对谁讲'),
+    '不再用含义模糊的「给谁看」「对谁说」',
+  );
   await page.screenshot({ path: resolve(SHOTS, 'step7-brief.png'), fullPage: true });
 
   // ---------- 10. 导出的 JSON 字段完整 ----------

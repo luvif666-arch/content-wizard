@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { AUDIENCE_PRESETS } from '../presets';
 import type { AudienceAnswer } from '../types';
+import StepQuote from './StepQuote';
 
 interface Props {
   value: AudienceAnswer | null;
@@ -11,14 +12,28 @@ interface Props {
 export default function AudienceStep({ value, onChange }: Props) {
   const [custom, setCustom] = useState(value?.id === 'custom' ? value.label : '');
   const isCustom = value?.id === 'custom';
+  const done = !!value && value.label !== '（待填写）';
 
   return (
     <div>
       <div className="step-head">
         <div className="eyebrow">第 1 步 · 关系</div>
         <h1>这条内容是给谁看的？</h1>
-        <p className="lede">先想清楚你对面坐着谁，再想好这次要跟他聊什么，文章就开始有方向了。</p>
-        <p className="quote">你跟一个刚认识的人吃饭，会先抿一下你们大概能打成什么关系。</p>
+      </div>
+
+      {/* 定位卡片：交代整套向导的参照系，并说明答案都用第二人称，避免用户倒推「我」指谁。
+          刻意只讲这个类比，不剧透后面的步骤和结论。 */}
+      <div className="orient">
+        <p className="orient-lead">这套向导只做一件事：把「做内容」当成「跟一个人聊天」。</p>
+        <p>
+          就像你跟一个刚认识的人吃饭——先看对面坐着谁，再找双方都能接上的话题，然后挑他正在经历的事聊，
+          并按照他已经知道多少，决定从哪句话接下去。
+        </p>
+        <p className="orient-perspective">
+          <strong>你的位置：</strong>你是创作者，你在跟「读者」讲话。
+          所以下面每个选项都是在描述<strong>他会怎么接收你的内容</strong>，
+          选项里的「你」指你本人，句子开头都是「他」——不必再倒推是谁的视角。
+        </p>
       </div>
 
       <div className="option-list">
@@ -81,6 +96,8 @@ export default function AudienceStep({ value, onChange }: Props) {
           />
         </div>
       )}
+
+      {done && <StepQuote step="audience" />}
     </div>
   );
 }

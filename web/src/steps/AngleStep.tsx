@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { getAngles } from '../lib/model';
 import type { CandidateSource, GenContext, ModelPrefs } from '../lib/model';
 import type { AngleAnswer, AngleOption } from '../types';
+import StepQuote from './StepQuote';
 
 interface Props {
   value: AngleAnswer | null;
@@ -90,11 +91,12 @@ export default function AngleStep({ value, ctx, prefs, onChange }: Props) {
         <div className="eyebrow">第 4 步 · 切入点</div>
         <h1>这次从哪里开始聊？</h1>
         <p className="lede">
-          同一个选题换一个切入点，需要准备的例子、信息和表达顺序都会跟着变。
+          选题决定<strong>说什么</strong>，切入点决定<strong>从哪句话开始</strong>。
+          你要挑的是「第一句从哪切进去」，让读者愿意继续听下去。
         </p>
         {ctx.subject && (
           <p className="quote">
-            当前选题：对「{ctx.subject.who.label}」，讲「{ctx.subject.what}」
+            当前选题：你（创作者）要对「{ctx.subject.who.label}」，讲「{ctx.subject.what}」
           </p>
         )}
       </div>
@@ -192,6 +194,8 @@ export default function AngleStep({ value, ctx, prefs, onChange }: Props) {
       {warning && value?.consistencyAcknowledged && (
         <div className="notice info">已确认：正文会从切入点回到「{ctx.subject?.what}」这个目标。</div>
       )}
+
+      {selected.length > 0 && <StepQuote step="angle" />}
     </div>
   );
 }

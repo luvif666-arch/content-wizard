@@ -343,7 +343,12 @@ export default function App() {
               <TopicStep value={state.topic} prefs={prefs} onChange={(v) => setPart('topic', v)} />
             )}
             {step === 'subject' && (
-              <SubjectStep value={state.subject} topic={state.topic} onChange={(v) => setPart('subject', v)} />
+              <SubjectStep
+                value={state.subject}
+                topic={state.topic}
+                prefs={prefs}
+                onChange={(v) => setPart('subject', v)}
+              />
             )}
             {step === 'angle' && (
               <AngleStep value={state.angle} ctx={ctx} prefs={prefs} onChange={(v) => setPart('angle', v)} />

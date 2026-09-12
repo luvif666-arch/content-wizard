@@ -31,8 +31,9 @@ export function buildBrief(state: WizardState): Brief {
   sections.push({
     layer: STEP_META.audience.layer,
     question: STEP_META.audience.question,
+    // 明确写出视角：避免「给谁看」这种说法让人分不清是谁在看谁
     lines: state.audience
-      ? [`给谁看：${state.audience.label}`, `这意味着：${state.audience.implies}`]
+      ? [`你（创作者）要讲给谁：${state.audience.label}`, `这意味着：${state.audience.implies}`]
       : ['（未填写）'],
   });
 
@@ -51,7 +52,7 @@ export function buildBrief(state: WizardState): Brief {
     layer: STEP_META.subject.layer,
     question: STEP_META.subject.question,
     lines: state.subject
-      ? [`对谁说：${state.subject.who.label}`, `说什么：${state.subject.what}`]
+      ? [`要对谁讲：${state.subject.who.label}`, `要讲什么：${state.subject.what}`]
       : ['（未填写）'],
     // 分组而不是拼缩进字符串：展示层不需要再解析前缀，浏览器和 Markdown 才能各自渲染成正确的列表
     groups: state.subject

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { getSubtopics } from '../lib/model';
 import type { CandidateSource, ModelPrefs } from '../lib/model';
 import type { TopicAnswer } from '../types';
+import StepQuote from './StepQuote';
 
 interface Props {
   value: TopicAnswer | null;
@@ -77,7 +78,6 @@ export default function TopicStep({ value, prefs, onChange }: Props) {
           “我今天想做一条情感内容” —— 范围有了，但我还是不知道你准备讲什么。
         </p>
       </div>
-
       <div className="field">
         <label htmlFor="topic-big">大类话题</label>
         <p className="helper">例：情感 / 职场 / AI / 健康 / 消费 / 自媒体</p>
@@ -179,6 +179,8 @@ export default function TopicStep({ value, prefs, onChange }: Props) {
           )}
         </>
       )}
+
+      {subs.length > 0 && <StepQuote step="topic" />}
     </div>
   );
 }
