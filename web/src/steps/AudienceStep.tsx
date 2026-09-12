@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { AUDIENCE_PRESETS } from '../presets';
 import type { AudienceAnswer } from '../types';
-import StepQuote from './StepQuote';
 
 interface Props {
   value: AudienceAnswer | null;
@@ -12,7 +11,6 @@ interface Props {
 export default function AudienceStep({ value, onChange }: Props) {
   const [custom, setCustom] = useState(value?.id === 'custom' ? value.label : '');
   const isCustom = value?.id === 'custom';
-  const done = !!value && value.label !== '（待填写）';
 
   return (
     <div>
@@ -96,8 +94,6 @@ export default function AudienceStep({ value, onChange }: Props) {
           />
         </div>
       )}
-
-      {done && <StepQuote step="audience" />}
     </div>
   );
 }

@@ -4,7 +4,6 @@ import type { Inspiration } from '../presets';
 import { SOURCE_LABEL, getInspirations } from '../lib/model';
 import type { CandidateSource, ModelPrefs } from '../lib/model';
 import type { SubjectAnswer, TopicAnswer } from '../types';
-import StepQuote from './StepQuote';
 
 interface Props {
   value: SubjectAnswer | null;
@@ -240,8 +239,6 @@ export default function SubjectStep({ value, topic, prefs, onChange }: Props) {
           。两部分都填好才能进入下一步。
         </div>
       )}
-
-      {!missingWho && !missingWhat && <StepQuote step="subject" />}
     </div>
   );
 }

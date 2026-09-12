@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { getTitles } from '../lib/model';
 import type { CandidateSource, GenContext, ModelPrefs } from '../lib/model';
 import type { TitleAnswer, TitleOption } from '../types';
-import StepQuote from './StepQuote';
 
 interface Props {
   value: TitleAnswer | null;
@@ -122,8 +121,6 @@ export default function TitleStep({ value, ctx, prefs, onChange }: Props) {
           </p>
         </div>
       )}
-
-      {selected && <StepQuote step="title" />}
     </div>
   );
 }

@@ -1,7 +1,6 @@
 import { DEFAULT_SECTIONS, FORMAT_FOLLOW_UPS } from '../presets';
 import { OUTPUT_FORMAT_LABEL } from '../types';
 import type { ExpressionAnswer, ExpressionSection, OutputFormat } from '../types';
-import StepQuote from './StepQuote';
 
 interface Props {
   value: ExpressionAnswer | null;
@@ -171,8 +170,6 @@ export default function ExpressionStep({ value, onChange }: Props) {
           </div>
         </>
       )}
-
-      {sections.length > 0 && <StepQuote step="expression" />}
     </div>
   );
 }

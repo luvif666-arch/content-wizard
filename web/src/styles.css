@@ -293,8 +293,77 @@ h2 {
   color: var(--ink);
 }
 
-/* ---------- 步骤 3 的灵感示例 ---------- */
+/* ---------- 已选范围（可删减的标签） ---------- */
 
+.chosen {
+  margin-top: 18px;
+  padding: 14px 16px;
+  background: var(--accent-soft);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.chosen-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.chosen-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--accent-ink);
+}
+
+.chosen-clear {
+  margin-left: auto;
+  min-height: 34px;
+  padding: 4px 8px;
+  font-size: 13px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 8px 5px 12px;
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.chip-remove {
+  /* 触控区要够大：这个按钮是用户唯一的删减入口 */
+  width: 26px;
+  height: 26px;
+  min-width: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.chip-remove:hover {
+  background: #ecebe6;
+  color: var(--danger);
+}
+
+/* ---------- 步骤 3 的灵感示例 ---------- */
 .inspire {
   margin: 22px 0;
   padding: 16px 18px;

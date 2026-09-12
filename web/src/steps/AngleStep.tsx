@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { getAngles } from '../lib/model';
 import type { CandidateSource, GenContext, ModelPrefs } from '../lib/model';
 import type { AngleAnswer, AngleOption } from '../types';
-import StepQuote from './StepQuote';
 
 interface Props {
   value: AngleAnswer | null;
@@ -194,8 +193,6 @@ export default function AngleStep({ value, ctx, prefs, onChange }: Props) {
       {warning && value?.consistencyAcknowledged && (
         <div className="notice info">已确认：正文会从切入点回到「{ctx.subject?.what}」这个目标。</div>
       )}
-
-      {selected.length > 0 && <StepQuote step="angle" />}
     </div>
   );
 }

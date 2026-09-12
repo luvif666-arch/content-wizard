@@ -12,7 +12,8 @@
     "每个选项必须携带“它负责什么结果”，而不是它长什么样。",
     "上游改动必须让下游所有答案标记为 stale，需用户重新确认。",
     "预设库优先，命中不到才调用模型生成，保证离线可用与低延迟。",
-    "输出物是一份可直接交给 Agent 的创作简报，不是成稿。"
+    "输出物是一份可直接交给 Agent 的创作简报，不是成稿。",
+    "界面只保留流程本身：不引用原文摘录，避免用理论分散做决定的注意力。"
   ],
   "steps": [
     {
@@ -21,7 +22,6 @@
       "layer": "关系",
       "question": "这条内容是给谁看的？",
       "questionTemplate": "我想跟 ______，聊聊 ______。",
-      "articleMapping": "你跟一个刚认识的人吃饭，会先抿一下你们大概能打成什么关系。",
       "inputMode": "single-select + custom",
       "options": [
         { "id": "stranger", "label": "完全陌生的人", "hint": "对我和我的领域一无所知", "implies": "需要从头建立语境，不能跳步" },
@@ -38,7 +38,6 @@
       "index": 1,
       "layer": "话题",
       "question": "你想聊哪个大方向？",
-      "articleMapping": "话题给了我们一个讨论的方向……但如果你说“我今天想做一条情感内容”，我还是不知道你准备讲什么。",
       "inputMode": "free-text-then-suggest",
       "suggestionStrategy": {
         "order": ["preset-map", "embedding-match", "llm-expand"],
@@ -60,7 +59,6 @@
       "index": 2,
       "layer": "选题",
       "question": "这次你要对谁说什么？",
-      "articleMapping": "这里面得有一个具体的人，也有一件具体的事。",
       "inputMode": "two-part-form + generated-examples",
       "fields": [
         {
@@ -97,7 +95,6 @@
       "index": 3,
       "layer": "切入点",
       "question": "这次从哪里开始聊？",
-      "articleMapping": "同一个选题，换一个切入点，需要准备的例子、信息和表达顺序都会跟着变。",
       "inputMode": "multi-select (1-3) + rank",
       "angleTypes": [
         { "id": "scene", "label": "一个具体场景", "example": "第一次约会，从选哪家餐厅开始" },
@@ -116,7 +113,6 @@
       "index": 4,
       "layer": "标题",
       "question": "用哪句话开启这段对话？",
-      "articleMapping": "标题最重要的地方，是让对的人愿意进入这段对话。",
       "inputMode": "generated-options + custom",
       "formulas": [
         { "id": "question", "label": "问题式", "pattern": "把读者正在做的那次选择直接摆出来", "example": "第一次约会，到底应该去哪里吃饭？" },
@@ -133,7 +129,6 @@
       "index": 5,
       "layer": "表达",
       "question": "你准备用什么让对方理解你的判断？",
-      "articleMapping": "知道对方现在理解到哪里，然后把下一步接给他。",
       "inputMode": "structure-toggle + format",
       "defaultStructure": [
         { "id": "scene", "label": "场景", "role": "让对方先认出现象" },

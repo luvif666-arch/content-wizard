@@ -146,9 +146,9 @@ try {
     hintTexts.slice(0, 2).join(' / '),
   );
   check(
-    '摘录在用户做完这一步之前不出现',
+    '界面上不出现原文摘录',
     !text.includes('抿一下你们大概能打成什么关系'),
-    '选择之前不出现，避免用理论干扰判断',
+    '按用户决定：只留流程本身，不引原文',
   );
 
   // ---------- 2. 未填不能前进（不能跳过步骤） ----------
@@ -165,9 +165,9 @@ try {
   await sleep(250);
   text = await bodyText(page);
   check(
-    '选完之后才显示该步的原文摘录',
-    text.includes('抿一下你们大概能打成什么关系'),
-    '属于回看用的理论，放在决定之后',
+    '选中后仍不出现原文摘录',
+    !text.includes('抿一下你们大概能打成什么关系'),
+    '摘录已按用户要求整段移除',
   );
 
   await next(page);
@@ -198,6 +198,66 @@ try {
   // 选 2 个子话题
   await clickByText(page, 'button.option', '约会', 'exact');
   await clickByText(page, 'button.option', '暧昧期', 'exact');
+  await sleep(250);
+
+  // ---------- 4b. 已选范围必须可以删减 ----------
+  const chipInfo = await page.evaluate(() => ({
+    chips: Array.from(document.querySelectorAll('.chip')).map((c) => (c.textContent ?? '').replace('×', '').trim()),
+    hasRemove: document.querySelectorAll('.chip-remove').length,
+    hasClear: Array.from(document.querySelectorAll('button')).some((b) => (b.textContent ?? '').trim() === '清空'),
+  }));
+  check(
+    '已选范围显示成可删减的标签',
+    chipInfo.chips.length === 2 && chipInfo.hasRemove === 2,
+    `标签：${chipInfo.chips.join('、')}`,
+  );
+
+  // 点 × 删掉一个
+  await page.evaluate(() => {
+    const target = Array.from(document.querySelectorAll('.chip-remove')).find((b) =>
+      (b.getAttribute('aria-label') ?? '').includes('约会'),
+    );
+    target?.click();
+  });
+  await sleep(300);
+  let subsNow = await page.$$eval('.chip', (ns) => ns.map((c) => (c.textContent ?? '').replace('×', '').trim()));
+  check('点标签上的 × 可以去掉已选范围', subsNow.length === 1 && subsNow[0] === '暧昧期', `剩：${subsNow.join('、')}`);
+
+  // 自定义添加的分支也必须能删——这是之前真正缺入口的地方
+  await page.type('#topic-custom', '冷场怎么办');
+  await clickByText(page, 'button.btn', '添加', 'exact');
+  await sleep(300);
+  const withCustom = await page.$$eval('.chip', (ns) => ns.map((c) => (c.textContent ?? '').replace('×', '').trim()));
+  check(
+    '自定义添加的分支出现在已选范围里',
+    withCustom.includes('冷场怎么办'),
+    withCustom.join('、'),
+  );
+  await page.evaluate(() => {
+    const target = Array.from(document.querySelectorAll('.chip-remove')).find((b) =>
+      (b.getAttribute('aria-label') ?? '').includes('冷场怎么办'),
+    );
+    target?.click();
+  });
+  await sleep(300);
+  const afterCustomRemove = await page.$$eval('.chip', (ns) =>
+    ns.map((c) => (c.textContent ?? '').replace('×', '').trim()),
+  );
+  check(
+    '自定义添加的分支也能删掉',
+    !afterCustomRemove.includes('冷场怎么办'),
+    `剩：${afterCustomRemove.join('、') || '（空）'}`,
+  );
+  await page.screenshot({ path: resolve(SHOTS, 'step2-chips.png'), fullPage: true });
+
+  // 恢复成 2 个子话题，继续后面的流程
+  await clickByText(page, 'button.option', '约会', 'exact');
+  await sleep(250);
+  // 记下实际选中的子话题，后面判断灵感示例的相关性时要用（不写死成某个词）
+  const selectedSubWords = await page.$$eval('.chip', (ns) =>
+    ns.map((c) => (c.textContent ?? '').replace('×', '').trim()),
+  );
+
   await next(page);
   text = await bodyText(page);
   check('第 2 步可多选并进入第 3 步', text.includes('这次你要对谁说什么'));
@@ -219,16 +279,14 @@ try {
     inspireInfo.count >= 4,
     `${inspireInfo.count} 条，处境类型：${inspireInfo.labels.slice(0, 2).join('、')}…`,
   );
-  // 相关性判断要对着实际选中的子话题，不能写死成某个词
-  const selectedSubs = await page.evaluate(() =>
-    (document.body.textContent ?? '').match(/已选范围：([^\n]+)/)?.[1] ?? '',
-  );
   check(
     '示例是具体的人和事，不是泛泛的类型标签',
     // 注意：内置成稿文案（如「一提到确定关系对方就转移话题」）是领域特异的，
     // 但不会逐字出现话题名，所以这里只要求「至少一条明确带话题词 + 每条都足够具体」。
+    // 话题词取自第 2 步实际选中的范围，不写死——删减标签的测试会改变子话题的顺序与集合。
     // 离题话题的严格相关性由 verify-coverage.mjs 专项验收。
-    inspireInfo.texts.every((t) => t.length >= 12) && inspireInfo.texts.some((t) => t.includes('暧昧期')),
+    inspireInfo.texts.every((t) => t.length >= 12) &&
+      inspireInfo.texts.some((t) => selectedSubWords.some((w) => t.includes(w))),
     `例如：${inspireInfo.texts[0]?.slice(0, 30)}…`,
   );
   check(

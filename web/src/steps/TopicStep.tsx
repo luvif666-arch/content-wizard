@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { getSubtopics } from '../lib/model';
 import type { CandidateSource, ModelPrefs } from '../lib/model';
 import type { TopicAnswer } from '../types';
-import StepQuote from './StepQuote';
 
 interface Props {
   value: TopicAnswer | null;
@@ -171,16 +170,41 @@ export default function TopicStep({ value, prefs, onChange }: Props) {
               </button>
             </div>
           </div>
-
-          {subs.length > 0 && (
-            <p className="lede">
-              已选范围：<strong>{subs.join('、')}</strong>
-            </p>
-          )}
         </>
       )}
 
-      {subs.length > 0 && <StepQuote step="topic" />}
+      {/* 已选范围做成可删除的标签：
+          候选列表会随输入变化，自定义添加的分支原本没有任何删除入口，
+          用户一旦加错就再也去不掉。所以删减统一在这里做。 */}
+      {subs.length > 0 && (
+        <div className="chosen">
+          <div className="chosen-head">
+            <span className="chosen-title">已选范围</span>
+            <span className="tag">
+              {subs.length}/{MAX_SUBS}
+            </span>
+            <button type="button" className="linkbtn chosen-clear" onClick={() => onChange({ big: big.trim(), subs: [] })}>
+              清空
+            </button>
+          </div>
+          <div className="chips">
+            {subs.map((sub) => (
+              <span className="chip" key={sub}>
+                {sub}
+                <button
+                  type="button"
+                  className="chip-remove"
+                  aria-label={`去掉「${sub}」`}
+                  title={`去掉「${sub}」`}
+                  onClick={() => toggleSub(sub)}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
